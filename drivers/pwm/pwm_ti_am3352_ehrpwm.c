@@ -118,229 +118,124 @@ struct ti_ehrpwm_cfg {
 struct ti_ehrpwm_data {
 	DEVICE_MMIO_RAM;
 	uint32_t period_cycles[TI_EHRPWM_NUM_CHANNELS];
-	uint32_t prescale_div[TI_EHRPWM_NUM_CHANNELS];
 	bool symmetric;
 	bool enabled[TI_EHRPWM_NUM_CHANNELS];
+	/* what was last written to AQCSFRC: never rebuilt from a read-back */
+	uint16_t aqcsfrc;
+	struct k_spinlock lock;
 #ifdef CONFIG_PWM_EVENT
 	uint16_t event;
 	sys_slist_t event_callbacks;
-	struct k_spinlock lock;
 #endif /* CONFIG_PWM_EVENT */
 };
 
-static int ti_ehrpwm_configure_tbctl(const struct device *dev, uint32_t channel,
-				     uint32_t period_cycles)
+/* registers outside struct ti_ehrpwm_regs, by offset */
+#define TI_EHRPWM_REG16(regs, off) (*(volatile uint16_t *)((uintptr_t)(regs) + (off)))
+#define TI_EHRPWM_TBCNT_OFFSET     (0x08)
+#define TI_EHRPWM_CMPCTL_OFFSET    (0x0e)
+#define TI_EHRPWM_DBCTL_OFFSET     (0x1e)
+#define TI_EHRPWM_PCCTL_OFFSET     (0x3c)
+
+#define TI_EHRPWM_TBCTL_FREE_SOFT          GENMASK(15, 14)
+#define TI_EHRPWM_TBCTL_FREE_SOFT_FREE_RUN (2)
+#define TI_EHRPWM_TBCTL_SYNCOSEL           GENMASK(5, 4)
+#define TI_EHRPWM_TBCTL_SYNCOSEL_DISABLED  (3)
+
+#define TI_EHRPWM_AQSFRC_RLDCSF_ZERO      (0)
+#define TI_EHRPWM_AQSFRC_RLDCSF_IMMEDIATE (3)
+
+static uint16_t ti_ehrpwm_csf_mask(uint32_t channel)
 {
-	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
+	return (channel == 0) ? TI_EHRPWM_AQCSFRC_CSFA : TI_EHRPWM_AQCSFRC_CSFB;
+}
+
+/*
+ * Continuous software force low on a channel, effective at once (the
+ * time-base clock runs from init on, the force needs one of its edges).
+ */
+static void ti_ehrpwm_force_low(const struct device *dev, uint32_t channel)
+{
 	struct ti_ehrpwm_data *data = DEV_DATA(dev);
-	uint16_t prescale_div;
-	uint16_t tbctl;
+	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
+	const uint16_t mask = ti_ehrpwm_csf_mask(channel);
 
-	/* already configured */
-	if (data->period_cycles[channel] == period_cycles) {
-		return 0;
-	}
+	data->aqcsfrc = (data->aqcsfrc & ~mask) | FIELD_PREP(mask, TI_EHRPWM_AQCSFRC_CSF_LOW);
+	regs->AQSFRC = FIELD_PREP(TI_EHRPWM_AQSFRC_RLDCSF, TI_EHRPWM_AQSFRC_RLDCSF_IMMEDIATE);
+	regs->AQCSFRC = data->aqcsfrc;
 
-	tbctl = regs->TBCTL;
-
-	/* configure shadow loading on period register (=0h) */
-	tbctl &= ~TI_EHRPWM_TBCTL_PRDLD;
-
-	/* configure counter mode */
-	tbctl &= ~TI_EHRPWM_TBCTL_CTRMODE;
-	if (data->symmetric) {
-		tbctl |= FIELD_PREP(TI_EHRPWM_TBCTL_CTRMODE, TI_EHRPWM_TBCTL_CTRMODE_UP_DOWN);
+	/* shadowed: zero by the time the force is released again */
+	if (channel == 0) {
+		regs->CMPA = 0;
 	} else {
-		tbctl |= FIELD_PREP(TI_EHRPWM_TBCTL_CTRMODE, TI_EHRPWM_TBCTL_CTRMODE_UP_ONLY);
+		regs->CMPB = 0;
 	}
+}
 
-	/* find the minimum prescaler that will allow configuring period_cycles */
+/*
+ * Release the force at the next counter zero, where the shadowed period and
+ * compare values written before it take effect too: the first period after
+ * an enable is already the requested one.
+ */
+static void ti_ehrpwm_release(const struct device *dev, uint32_t channel)
+{
+	struct ti_ehrpwm_data *data = DEV_DATA(dev);
+	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
+
+	data->aqcsfrc &= ~ti_ehrpwm_csf_mask(channel);
+	regs->AQSFRC = FIELD_PREP(TI_EHRPWM_AQSFRC_RLDCSF, TI_EHRPWM_AQSFRC_RLDCSF_ZERO);
+	regs->AQCSFRC = data->aqcsfrc;
+}
+
+/*
+ * Smallest prescaler (CLKDIV 1..128 times HSPCLKDIV 1, 2, 4..14) that fits
+ * the period into the 16-bit counter; the counter ticks per period and the
+ * TBPRD value for it.
+ */
+static int ti_ehrpwm_prescaler(bool symmetric, uint32_t period_cycles, uint16_t *tbctl_div,
+			       uint32_t *prescale_div)
+{
+	uint32_t best = UINT32_MAX;
+
 	for (uint16_t clkdiv = 0; clkdiv <= TI_EHRPWM_TBCTL_CLKDIV_MAX; clkdiv++) {
 		for (uint16_t hspclkdiv = 0; hspclkdiv <= TI_EHRPWM_TBCTL_HSPCLKDIV_MAX;
 		     hspclkdiv++) {
+			const uint32_t div = (1U << clkdiv) * (hspclkdiv ? (hspclkdiv * 2U) : 1U);
+			uint32_t ticks = period_cycles / div;
 
-			prescale_div = (1 << clkdiv) * (hspclkdiv ? (hspclkdiv * 2) : 1);
-
-			if (prescale_div > period_cycles / TI_EHRPWM_PERIOD_CYCLES_MAX) {
-				tbctl &= ~(TI_EHRPWM_TBCTL_CLKDIV | TI_EHRPWM_TBCTL_HSPCLKDIV);
-				tbctl |= FIELD_PREP(TI_EHRPWM_TBCTL_HSPCLKDIV, hspclkdiv) |
-					 FIELD_PREP(TI_EHRPWM_TBCTL_CLKDIV, clkdiv);
-
-				/* write tbctl */
-				regs->TBCTL = tbctl;
-
-				/* save period_cycles */
-				data->period_cycles[channel] = period_cycles;
-				data->prescale_div[channel] = prescale_div;
-
-				/* early return */
-				return 0;
+			/* TBPRD is ticks - 1 counting up, ticks / 2 counting up-down */
+			if (symmetric) {
+				ticks /= 2U;
+			} else if (ticks > 0U) {
+				ticks--;
+			}
+			if (ticks <= TI_EHRPWM_PERIOD_CYCLES_MAX && div < best) {
+				best = div;
+				*tbctl_div = FIELD_PREP(TI_EHRPWM_TBCTL_HSPCLKDIV, hspclkdiv) |
+					     FIELD_PREP(TI_EHRPWM_TBCTL_CLKDIV, clkdiv);
 			}
 		}
 	}
-
-	/* period is too long for configuration */
-	return -1;
-}
-
-static int ti_ehrpwm_configure_aq(const struct device *dev, uint32_t channel, bool polarity)
-{
-	struct ti_ehrpwm_data *data = DEV_DATA(dev);
-	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
-	uint16_t aqctl_upmask;
-	uint16_t aqctl_downmask;
-	uint16_t aqctl;
-
-	if (channel == 0) {
-		aqctl = regs->AQCTLA;
-		aqctl_upmask = TI_EHRPWM_AQCTL_CAU;
-		aqctl_downmask = TI_EHRPWM_AQCTL_CAD;
-	} else {
-		aqctl = regs->AQCTLB;
-		aqctl_upmask = TI_EHRPWM_AQCTL_CBU;
-		aqctl_downmask = TI_EHRPWM_AQCTL_CBD;
+	if (best == UINT32_MAX) {
+		return -EINVAL;
 	}
-
-	aqctl &= ~(TI_EHRPWM_AQCTL_ZRO | TI_EHRPWM_AQCTL_PRD | aqctl_upmask | aqctl_downmask);
-	if (polarity == PWM_POLARITY_NORMAL) {
-		/* active-high */
-		aqctl |= FIELD_PREP(aqctl_upmask, TI_EHRPWM_AQCTL_FLD_CLR);
-
-		aqctl &= ~TI_EHRPWM_AQCTL_PRD;
-
-		if (data->symmetric) {
-			aqctl &= ~TI_EHRPWM_AQCTL_ZRO;
-			aqctl |= FIELD_PREP(aqctl_downmask, TI_EHRPWM_AQCTL_FLD_SET);
-		} else {
-			aqctl |= FIELD_PREP(TI_EHRPWM_AQCTL_ZRO, TI_EHRPWM_AQCTL_FLD_SET);
-			aqctl &= ~aqctl_downmask;
-		}
-	} else {
-		/* active-low */
-		aqctl |= FIELD_PREP(aqctl_upmask, TI_EHRPWM_AQCTL_FLD_SET);
-
-		aqctl &= ~TI_EHRPWM_AQCTL_ZRO;
-
-		if (data->symmetric) {
-			aqctl &= ~TI_EHRPWM_AQCTL_PRD;
-			aqctl |= FIELD_PREP(aqctl_downmask, TI_EHRPWM_AQCTL_FLD_CLR);
-		} else {
-			aqctl |= FIELD_PREP(TI_EHRPWM_AQCTL_PRD, TI_EHRPWM_AQCTL_FLD_CLR);
-			aqctl &= ~aqctl_downmask;
-		}
-	}
-
-	if (channel == 0) {
-		regs->AQCTLA = aqctl;
-	} else {
-		regs->AQCTLB = aqctl;
-	}
+	*prescale_div = best;
 
 	return 0;
 }
 
-static int ti_ehrpwm_enable(const struct device *dev, uint32_t channel)
+/* active-high output: set at zero (or on the way down), clear at the compare match */
+static uint16_t ti_ehrpwm_aqctl(bool symmetric, uint32_t channel)
 {
-	const struct ti_ehrpwm_cfg *cfg = DEV_CFG(dev);
-	struct ti_ehrpwm_data *data = DEV_DATA(dev);
-	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
-	uint32_t tbclk_reg;
-	uint16_t aqcsfrc;
-	int err;
+	const uint16_t up = (channel == 0) ? TI_EHRPWM_AQCTL_CAU : TI_EHRPWM_AQCTL_CBU;
+	const uint16_t down = (channel == 0) ? TI_EHRPWM_AQCTL_CAD : TI_EHRPWM_AQCTL_CBD;
 
-	/* already enabled */
-	if (data->enabled[channel]) {
-		return 0;
+	if (symmetric) {
+		return FIELD_PREP(up, TI_EHRPWM_AQCTL_FLD_CLR) |
+		       FIELD_PREP(down, TI_EHRPWM_AQCTL_FLD_SET);
 	}
 
-	/* disable forced action qualifier */
-	aqcsfrc = regs->AQCSFRC;
-	if (channel == 0) {
-		aqcsfrc &= ~TI_EHRPWM_AQCSFRC_CSFA;
-	} else {
-		aqcsfrc &= ~TI_EHRPWM_AQCSFRC_CSFB;
-	}
-
-	/* configure shadow register */
-	regs->AQSFRC &= ~TI_EHRPWM_AQSFRC_RLDCSF;
-	regs->AQCSFRC = aqcsfrc;
-
-	/* enable TBCLK (shared by both channels) */
-	err = syscon_read_reg(cfg->tbclk_syscon, cfg->tbclk_offset, &tbclk_reg);
-	if (err != 0) {
-		LOG_ERR("failed to read timebase clock register");
-		return err;
-	}
-	tbclk_reg |= BIT(cfg->tbclk_bit);
-	err = syscon_write_reg(cfg->tbclk_syscon, cfg->tbclk_offset, tbclk_reg);
-	if (err != 0) {
-		LOG_ERR("failed to write timebase clock register");
-		return err;
-	}
-	data->enabled[channel] = true;
-
-	return 0;
-}
-
-static int ti_ehrpwm_disable(const struct device *dev, uint32_t channel)
-{
-	const struct ti_ehrpwm_cfg *cfg = DEV_CFG(dev);
-	struct ti_ehrpwm_data *data = DEV_DATA(dev);
-	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
-	uint16_t aqcsfrc;
-	uint32_t tbclk_reg;
-	int err;
-
-	/* already disabled */
-	if (!data->enabled[channel]) {
-		return 0;
-	}
-
-	/* force continuous low on aq submodule */
-	aqcsfrc = regs->AQCSFRC;
-	if (channel == 0) {
-		aqcsfrc &= ~TI_EHRPWM_AQCSFRC_CSFA;
-		aqcsfrc |= FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFA, TI_EHRPWM_AQCSFRC_CSF_LOW);
-	} else {
-		aqcsfrc &= ~TI_EHRPWM_AQCSFRC_CSFB;
-		aqcsfrc |= FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFB, TI_EHRPWM_AQCSFRC_CSF_LOW);
-	}
-
-	/* configure shadow register */
-	regs->AQSFRC &= ~TI_EHRPWM_AQSFRC_RLDCSF;
-	regs->AQCSFRC = aqcsfrc;
-
-	/* configure active register */
-	regs->AQSFRC |= TI_EHRPWM_AQSFRC_RLDCSF;
-	regs->AQCSFRC = aqcsfrc;
-
-	data->period_cycles[channel] = 0;
-	data->enabled[channel] = false;
-
-	/*
-	 * The time-base clock is shared: stop it only when the other channel is
-	 * disabled too. Stopping it under a running channel would freeze that
-	 * output at its current level.
-	 */
-	for (uint32_t i = 0; i < TI_EHRPWM_NUM_CHANNELS; i++) {
-		if (data->enabled[i]) {
-			return 0;
-		}
-	}
-
-	err = syscon_read_reg(cfg->tbclk_syscon, cfg->tbclk_offset, &tbclk_reg);
-	if (err != 0) {
-		LOG_ERR("failed to read timebase clock register");
-		return err;
-	}
-	tbclk_reg &= ~BIT(cfg->tbclk_bit);
-	err = syscon_write_reg(cfg->tbclk_syscon, cfg->tbclk_offset, tbclk_reg);
-	if (err != 0) {
-		LOG_ERR("failed to write timebase clock register");
-		return err;
-	}
-
-	return 0;
+	return FIELD_PREP(up, TI_EHRPWM_AQCTL_FLD_CLR) |
+	       FIELD_PREP(TI_EHRPWM_AQCTL_ZRO, TI_EHRPWM_AQCTL_FLD_SET);
 }
 
 static int ti_ehrpwm_set_cycles(const struct device *dev, uint32_t channel, uint32_t period_cycles,
@@ -348,6 +243,9 @@ static int ti_ehrpwm_set_cycles(const struct device *dev, uint32_t channel, uint
 {
 	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
 	struct ti_ehrpwm_data *data = DEV_DATA(dev);
+	uint32_t prescale_div, period_ticks, pulse_ticks;
+	uint16_t tbctl_div;
+	k_spinlock_key_t key;
 	int err = 0;
 
 	if (channel >= TI_EHRPWM_NUM_CHANNELS) {
@@ -355,73 +253,94 @@ static int ti_ehrpwm_set_cycles(const struct device *dev, uint32_t channel, uint
 		return -EINVAL;
 	}
 
+	/*
+	 * A disabled channel is forced low, which is the active level of an
+	 * inverted one: not supported rather than unsafe.
+	 */
+	if ((flags & PWM_POLARITY_MASK) == PWM_POLARITY_INVERTED) {
+		return -ENOTSUP;
+	}
+
+	/*
+	 * Both channels share the time base and the force registers: one lock
+	 * for every update. Nothing is written before the request is known to
+	 * be valid, and the force is released last.
+	 */
+	key = k_spin_lock(&data->lock);
+
+	/* period 0: constant low */
+	if (period_cycles == 0) {
+		ti_ehrpwm_force_low(dev, channel);
+		data->period_cycles[channel] = 0;
+		data->enabled[channel] = false;
+		goto out;
+	}
+
 	/* there is a common period register, so the period should be same for all channels */
 	for (uint32_t i = 0; i < TI_EHRPWM_NUM_CHANNELS; i++) {
 		if (i != channel && data->period_cycles[i] != 0 &&
 		    data->period_cycles[i] != period_cycles) {
 			LOG_ERR("period value must be same as other channels");
-			return -EINVAL;
+			err = -EINVAL;
+			goto out;
 		}
 	}
 
-	/* force constant low */
-	if (period_cycles == 0) {
-		err = ti_ehrpwm_disable(dev, channel);
-		if (err != 0) {
-			LOG_ERR("failed to disable ehrpwm module");
-			return err;
-		}
-
-		/* early return after disable */
-		return 0;
-	}
-
-	err = ti_ehrpwm_enable(dev, channel);
+	err = ti_ehrpwm_prescaler(data->symmetric, period_cycles, &tbctl_div, &prescale_div);
 	if (err != 0) {
-		return err;
+		LOG_ERR("period is too long");
+		goto out;
 	}
 
-	/* configure action qualifier */
-	err = ti_ehrpwm_configure_aq(dev, channel, flags & PWM_POLARITY_MASK);
-	if (err != 0) {
-		LOG_ERR("failed to configure action qualifier");
-		return err;
-	}
-
-	/* configure tbctl and prescaler */
-	err = ti_ehrpwm_configure_tbctl(dev, channel, period_cycles);
-	if (err != 0) {
-		LOG_ERR("failed to configure clock prescaler values");
-		return err;
-	}
-
-	/* update cycles */
-	period_cycles /= data->prescale_div[channel];
-	pulse_cycles /= data->prescale_div[channel];
-
+	period_ticks = period_cycles / prescale_div;
+	pulse_ticks = pulse_cycles / prescale_div;
 	if (data->symmetric) {
-		period_cycles /= 2;
-		pulse_cycles /= 2;
+		period_ticks /= 2U;
+		pulse_ticks /= 2U;
 	}
+	if (period_ticks < 2U) {
+		LOG_ERR("period is too short");
+		err = -EINVAL;
+		goto out;
+	}
+	if (pulse_cycles >= period_cycles) {
+		/* a compare value the counter never reaches: constant high */
+		pulse_ticks = period_ticks;
+	} else if (pulse_ticks >= period_ticks) {
+		pulse_ticks = period_ticks - 1U;
+	}
+
+	regs->TBCTL = tbctl_div |
+		      FIELD_PREP(TI_EHRPWM_TBCTL_FREE_SOFT, TI_EHRPWM_TBCTL_FREE_SOFT_FREE_RUN) |
+		      FIELD_PREP(TI_EHRPWM_TBCTL_SYNCOSEL, TI_EHRPWM_TBCTL_SYNCOSEL_DISABLED) |
+		      FIELD_PREP(TI_EHRPWM_TBCTL_CTRMODE,
+				 data->symmetric ? TI_EHRPWM_TBCTL_CTRMODE_UP_DOWN
+						 : TI_EHRPWM_TBCTL_CTRMODE_UP_ONLY);
 
 	/*
-	 * write period cycles: an up-counter counts 0..TBPRD (TBPRD + 1 clocks
-	 * per period), an up-down counter 2 * TBPRD. With TBPRD = period - 1 a
-	 * pulse equal to the period never matches the counter, a true 100 %.
+	 * An up-counter counts 0..TBPRD (TBPRD + 1 clocks per period), an
+	 * up-down counter 2 * TBPRD. Period and compare values are shadowed
+	 * and load at counter zero.
 	 */
-	if (!data->symmetric && period_cycles > 0) {
-		period_cycles--;
-	}
-	regs->TBPRD = period_cycles;
-
-	/* write duty cycles */
+	regs->TBPRD = data->symmetric ? period_ticks : period_ticks - 1U;
 	if (channel == 0) {
-		regs->CMPA = pulse_cycles;
+		regs->AQCTLA = ti_ehrpwm_aqctl(data->symmetric, channel);
+		regs->CMPA = pulse_ticks;
 	} else {
-		regs->CMPB = pulse_cycles;
+		regs->AQCTLB = ti_ehrpwm_aqctl(data->symmetric, channel);
+		regs->CMPB = pulse_ticks;
+	}
+	data->period_cycles[channel] = period_cycles;
+
+	if (!data->enabled[channel]) {
+		ti_ehrpwm_release(dev, channel);
+		data->enabled[channel] = true;
 	}
 
-	return 0;
+out:
+	k_spin_unlock(&data->lock, key);
+
+	return err;
 }
 
 static int ti_ehrpwm_get_cycles_per_sec(const struct device *dev, uint32_t channel,
@@ -553,34 +472,57 @@ static int ti_ehrpwm_manage_event_callback(const struct device *dev,
 }
 #endif /* CONFIG_PWM_EVENT */
 
-static int ti_ehrpwm_force_low(const struct device *dev)
+/*
+ * Known, safe state: both outputs forced low, every sub-module that could
+ * alter them off, the time base free-running. The time-base clock stays on
+ * from here: a software force needs one of its edges to take effect, and a
+ * stopped time base freezes an output at its momentary level.
+ */
+static int ti_ehrpwm_reset_state(const struct device *dev)
 {
 	const struct ti_ehrpwm_cfg *cfg = DEV_CFG(dev);
+	struct ti_ehrpwm_data *data = DEV_DATA(dev);
 	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
 	uint32_t tbclk_reg;
 	int err;
-
-	regs->ETSEL &= ~TI_EHRPWM_ETSEL_INTEN;
-
-	/* continuous software force low on A and B, active register */
-	regs->AQSFRC |= TI_EHRPWM_AQSFRC_RLDCSF;
-	regs->AQCSFRC = FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFA, TI_EHRPWM_AQCSFRC_CSF_LOW) |
-			FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFB, TI_EHRPWM_AQCSFRC_CSF_LOW);
-	regs->CMPA = 0;
-	regs->CMPB = 0;
 
 	err = syscon_read_reg(cfg->tbclk_syscon, cfg->tbclk_offset, &tbclk_reg);
 	if (err != 0) {
 		LOG_ERR("failed to read timebase clock register");
 		return err;
 	}
-	tbclk_reg &= ~BIT(cfg->tbclk_bit);
+	tbclk_reg |= BIT(cfg->tbclk_bit);
 	err = syscon_write_reg(cfg->tbclk_syscon, cfg->tbclk_offset, tbclk_reg);
 	if (err != 0) {
 		LOG_ERR("failed to write timebase clock register");
+		return err;
 	}
 
-	return err;
+	/* a divide-by-1 time base first, so that the force is latched within a clock */
+	regs->TBCTL = FIELD_PREP(TI_EHRPWM_TBCTL_FREE_SOFT, TI_EHRPWM_TBCTL_FREE_SOFT_FREE_RUN) |
+		      FIELD_PREP(TI_EHRPWM_TBCTL_SYNCOSEL, TI_EHRPWM_TBCTL_SYNCOSEL_DISABLED) |
+		      FIELD_PREP(TI_EHRPWM_TBCTL_CTRMODE,
+				 data->symmetric ? TI_EHRPWM_TBCTL_CTRMODE_UP_DOWN
+						 : TI_EHRPWM_TBCTL_CTRMODE_UP_ONLY);
+
+	data->aqcsfrc = FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFA, TI_EHRPWM_AQCSFRC_CSF_LOW) |
+			FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFB, TI_EHRPWM_AQCSFRC_CSF_LOW);
+	regs->AQSFRC = FIELD_PREP(TI_EHRPWM_AQSFRC_RLDCSF, TI_EHRPWM_AQSFRC_RLDCSF_IMMEDIATE);
+	regs->AQCSFRC = data->aqcsfrc;
+
+	regs->ETSEL &= ~TI_EHRPWM_ETSEL_INTEN;
+	/* dead-band and chopper would reshape or invert the outputs */
+	TI_EHRPWM_REG16(regs, TI_EHRPWM_DBCTL_OFFSET) = 0;
+	TI_EHRPWM_REG16(regs, TI_EHRPWM_PCCTL_OFFSET) = 0;
+	/* compare registers shadowed, loaded at counter zero */
+	TI_EHRPWM_REG16(regs, TI_EHRPWM_CMPCTL_OFFSET) = 0;
+	regs->AQCTLA = 0;
+	regs->AQCTLB = 0;
+	regs->CMPA = 0;
+	regs->CMPB = 0;
+	TI_EHRPWM_REG16(regs, TI_EHRPWM_TBCNT_OFFSET) = 0;
+
+	return 0;
 }
 
 static int ti_ehrpwm_init(const struct device *dev)
@@ -592,12 +534,12 @@ static int ti_ehrpwm_init(const struct device *dev)
 
 	/*
 	 * Start from a known, safe state before the pins are muxed: both
-	 * outputs forced low (loaded immediately), time-base clock stopped.
+	 * outputs forced low (loaded immediately).
 	 * The module is not reset with the CPU (a watchdog or debugger reset,
 	 * a remoteproc restart of the core), so it may still be running the
 	 * previous configuration.
 	 */
-	ret = ti_ehrpwm_force_low(dev);
+	ret = ti_ehrpwm_reset_state(dev);
 	if (ret < 0) {
 		return ret;
 	}
@@ -625,8 +567,11 @@ static DEVICE_API(pwm, ti_ehrpwm_api) = {
 #endif /* CONFIG_PWM_EVENT */
 };
 
+/* a fixed-clock has one rate and no subsystem; the others are as configured */
 #define TI_EHRPWM_DEFINE_CLK_SUBSYS(n)                                                             \
-	COND_CODE_1(CONFIG_CLOCK_CONTROL_TISCI, (                                                  \
+	COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_CLOCKS_CTLR(n), fixed_clock), (                     \
+		static const clock_control_subsys_t ti_ehrpwm_clk_subsys_##n = NULL;               \
+	), (COND_CODE_1(CONFIG_CLOCK_CONTROL_TISCI, (                                              \
 		static struct tisci_clock_config tisci_fclk_##n =                                  \
 			TISCI_GET_CLOCK_DETAILS_BY_INST(n);                                        \
 		static const clock_control_subsys_t ti_ehrpwm_clk_subsys_##n =                     \
@@ -634,8 +579,7 @@ static DEVICE_API(pwm, ti_ehrpwm_api) = {
 	), (COND_CODE_1(CONFIG_CLOCK_CONTROL_ARM_SCMI,                                             \
 		(static const clock_control_subsys_t ti_ehrpwm_clk_subsys_##n =                    \
 			(clock_control_subsys_t)DT_INST_PHA(n, clocks, name);                      \
-	), (/* any other controller with a single rate, e.g. a fixed-clock */               \
-		static const clock_control_subsys_t ti_ehrpwm_clk_subsys_##n = NULL;))))
+	), (BUILD_ASSERT(0, "Unsupported clock controller");))))))
 
 #ifdef CONFIG_PWM_EVENT
 #define TI_EHRPWM_IRQ_INIT(n)                                                                      \
