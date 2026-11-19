@@ -36,4 +36,39 @@
 		pinmux = <K3_PINMUX(0x178, PIN_INPUT, MUX_MODE_3)>,	/* P9_14 UART6_RXD */
 			 <K3_PINMUX(0x17c, PIN_OUTPUT, MUX_MODE_3)>;	/* P9_16 UART6_TXD */
 	};
+
+	/*
+	 * Four PWM outputs free of the SPI6 / UART4 / UART6 pins, mux mode 6.
+	 * The receivers stay on (PIN_INPUT) so the level can be read back
+	 * through the GPIO input registers.
+	 */
+	ehrpwm0_default: ehrpwm0_default {
+		pinmux = <K3_PINMUX(0x164, PIN_INPUT, MUX_MODE_6)>,	/* P8_19 EHRPWM0_A */
+			 <K3_PINMUX(0x168, PIN_INPUT, MUX_MODE_6)>;	/* P8_13 EHRPWM0_B */
+	};
+
+	ehrpwm5_default: ehrpwm5_default {
+		pinmux = <K3_PINMUX(0x1ac, PIN_INPUT, MUX_MODE_6)>;	/* P8_37 EHRPWM5_A */
+	};
+
+	/* P9_25 has two balls: EHRPWM4_B on W26, AC4 parked as a GPIO input */
+	ehrpwm4_default: ehrpwm4_default {
+		pinmux = <K3_PINMUX(0x1a4, PIN_INPUT, MUX_MODE_6)>,	/* P9_25 EHRPWM4_B (W26) */
+			 <K3_PINMUX(0x200, PIN_INPUT, MUX_MODE_7)>;	/* P9_25 AC4 parked */
+	};
+
+	/*
+	 * Motor bridge control on GPIO2 (pads of GPIO0_n), mux mode 7, pulled
+	 * down so the bridges stay disabled and the brakes engaged while the
+	 * pins are inputs (reset, core stopped):
+	 * enables P8_14 (GPIO 75) / P8_16 (62), brake releases P8_17 (3) /
+	 * P8_18 (4), e-stop sense input P8_15 (61).
+	 */
+	motor_gpio_default: motor_gpio_default {
+		pinmux = <K3_PINMUX(0x130, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_14 */
+			 <K3_PINMUX(0x0fc, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_16 */
+			 <K3_PINMUX(0x00c, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_17 */
+			 <K3_PINMUX(0x010, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_18 */
+			 <K3_PINMUX(0x0f8, PIN_INPUT_PULLDOWN, MUX_MODE_7)>;	/* P8_15 */
+	};
 };
