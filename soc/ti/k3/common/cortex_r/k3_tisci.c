@@ -119,11 +119,33 @@ static int k3_sp_recv(void *msg, size_t len)
 	return 0;
 }
 
+/* Drop responses left in the RX thread by a previous image of this core */
+static void k3_sp_flush(void)
+{
+	mem_addr_t t = SP_THREAD(CONFIG_SOC_TI_K3_TISCI_SECPROXY_DATA, CONFIG_SOC_TI_K3_TISCI_RX_THREAD);
+	mem_addr_t rt = SP_THREAD(CONFIG_SOC_TI_K3_TISCI_SECPROXY_RT, CONFIG_SOC_TI_K3_TISCI_RX_THREAD);
+
+	for (int i = 0; i < 16; i++) {
+		uint32_t st = sys_read32(rt);
+
+		if ((st & SP_RT_ERR) != 0U || (st & SP_RT_CNT_MASK) == 0U) {
+			break;
+		}
+		(void)sys_read32(t + SP_DATA_END); /* reading the last register pops */
+	}
+}
+
 /* 0 = ACK, 1 = NAK, < 0 = transport error */
 static int k3_tisci_xfer(void *req, size_t req_len, void *resp, size_t resp_len)
 {
+	static bool flushed;
 	struct tisci_hdr *q = req, *r = resp;
 	int rc;
+
+	if (!flushed) {
+		k3_sp_flush();
+		flushed = true;
+	}
 
 	q->host = CONFIG_SOC_TI_K3_TISCI_HOST_ID;
 	q->seq = ++k3_tisci_seq;
@@ -137,14 +159,14 @@ static int k3_tisci_xfer(void *req, size_t req_len, void *resp, size_t resp_len)
 		if (rc != 0) {
 			return rc;
 		}
-		if (r->seq == q->seq) {
+		if (r->seq == q->seq && r->type == q->type) {
 			return ((r->flags & TISCI_FLAG_ACK) != 0U) ? 0 : 1;
 		}
 	}
 	return -EPROTO;
 }
 
-int k3_ir_route(uint16_t ir_dev, uint16_t ir_input, uint16_t ir_output)
+static __maybe_unused int k3_ir_route(uint16_t ir_dev, uint16_t ir_input, uint16_t ir_output)
 {
 	struct tisci_rm_irq_set_req req = {
 		.hdr.type = TISCI_MSG_RM_IRQ_SET,
@@ -162,7 +184,12 @@ int k3_ir_route(uint16_t ir_dev, uint16_t ir_input, uint16_t ir_output)
 	if (rc == 0) {
 		LOG_INF("IR %u: input %u -> output %u routed", ir_dev, ir_input, ir_output);
 	} else if (rc == 1) {
-		LOG_INF("IR %u: input %u -> output %u refused: kept from a previous run, used as is", ir_dev,
+		/*
+		 * The firmware refuses a route that is already programmed, which
+		 * is what a restart of this core finds; it also refuses a wrong
+		 * or foreign one, and the two cannot be told apart from here.
+		 */
+		LOG_WRN("IR %u: input %u -> output %u refused: assumed kept from a previous run", ir_dev,
 			ir_input, ir_output);
 	} else {
 		LOG_ERR("IR %u: input %u -> output %u: TI-SCI transport error %d", ir_dev, ir_input,
@@ -181,7 +208,8 @@ struct tisci_set_device_req {
 	uint8_t state;
 } __packed;
 
-static int k3_tisci_set_device_on(uint32_t dev_id)
+/* Request a device (power + module clock) on, as TI's PDK Sciclient_pmSetModuleState(ON) does */
+static __maybe_unused int k3_tisci_set_device_on(uint32_t dev_id)
 {
 	struct tisci_set_device_req req = {
 		.hdr.type = TISCI_MSG_SET_DEVICE,
@@ -191,19 +219,6 @@ static int k3_tisci_set_device_on(uint32_t dev_id)
 	struct tisci_hdr resp;
 
 	return k3_tisci_xfer(&req, sizeof(req), &resp, sizeof(resp));
-}
-
-/* Request a device (power + module clock) on, as TI's PDK Sciclient_pmSetModuleState(ON) does */
-int k3_tisci_device_on(uint32_t dev_id)
-{
-	int rc = k3_tisci_set_device_on(dev_id);
-
-	if (rc == 0) {
-		LOG_INF("device %u on", dev_id);
-	} else {
-		LOG_ERR("device %u: SET_DEVICE(ON) %s %d", dev_id, rc == 1 ? "NAK" : "error", rc);
-	}
-	return rc;
 }
 
 #ifdef CONFIG_SOC_TI_K3_TISCI_DEVICES
