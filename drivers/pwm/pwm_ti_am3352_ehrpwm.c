@@ -546,12 +546,54 @@ static int ti_ehrpwm_manage_event_callback(const struct device *dev,
 }
 #endif /* CONFIG_PWM_EVENT */
 
+static int ti_ehrpwm_force_low(const struct device *dev)
+{
+	const struct ti_ehrpwm_cfg *cfg = DEV_CFG(dev);
+	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
+	uint32_t tbclk_reg;
+	int err;
+
+	regs->ETSEL &= ~TI_EHRPWM_ETSEL_INTEN;
+
+	/* continuous software force low on A and B, active register */
+	regs->AQSFRC |= TI_EHRPWM_AQSFRC_RLDCSF;
+	regs->AQCSFRC = FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFA, TI_EHRPWM_AQCSFRC_CSF_LOW) |
+			FIELD_PREP(TI_EHRPWM_AQCSFRC_CSFB, TI_EHRPWM_AQCSFRC_CSF_LOW);
+	regs->CMPA = 0;
+	regs->CMPB = 0;
+
+	err = syscon_read_reg(cfg->tbclk_syscon, cfg->tbclk_offset, &tbclk_reg);
+	if (err != 0) {
+		LOG_ERR("failed to read timebase clock register");
+		return err;
+	}
+	tbclk_reg &= ~BIT(cfg->tbclk_bit);
+	err = syscon_write_reg(cfg->tbclk_syscon, cfg->tbclk_offset, tbclk_reg);
+	if (err != 0) {
+		LOG_ERR("failed to write timebase clock register");
+	}
+
+	return err;
+}
+
 static int ti_ehrpwm_init(const struct device *dev)
 {
 	const struct ti_ehrpwm_cfg *cfg = DEV_CFG(dev);
 	int ret;
 
 	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
+
+	/*
+	 * Start from a known, safe state before the pins are muxed: both
+	 * outputs forced low (loaded immediately), time-base clock stopped.
+	 * The module is not reset with the CPU (a watchdog or debugger reset,
+	 * a remoteproc restart of the core), so it may still be running the
+	 * previous configuration.
+	 */
+	ret = ti_ehrpwm_force_low(dev);
+	if (ret < 0) {
+		return ret;
+	}
 
 	ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret < 0) {
