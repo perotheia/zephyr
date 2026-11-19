@@ -221,6 +221,17 @@
 		status = "disabled";
 	};
 
+	uart0: uart@2800000 {
+		compatible = "ns16550";
+		reg = <0x02800000 0x100>;
+		clock-frequency = <48000000>;
+		interrupts = <0 158 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		reg-shift = <2>;
+		ti,sci-dev-id = <146>;
+		status = "disabled";
+	};
+
 	uart1: uart@2810000 {
 		compatible = "ns16550";
 		reg = <0x02810000 0x100>;
@@ -228,6 +239,7 @@
 		interrupts = <0 159 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
 		reg-shift = <2>;
+		ti,sci-dev-id = <278>;
 		status = "disabled";
 	};
 
@@ -238,6 +250,77 @@
 		interrupts = <0 160 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
 		reg-shift = <2>;
+		ti,sci-dev-id = <279>;
+		status = "disabled";
+	};
+
+	uart3: uart@2830000 {
+		compatible = "ns16550";
+		reg = <0x02830000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <280>;
+		status = "disabled";
+	};
+
+	uart4: uart@2840000 {
+		compatible = "ns16550";
+		reg = <0x02840000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <281>;
+		status = "disabled";
+	};
+
+	uart5: uart@2850000 {
+		compatible = "ns16550";
+		reg = <0x02850000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <282>;
+		status = "disabled";
+	};
+
+	uart6: uart@2860000 {
+		compatible = "ns16550";
+		reg = <0x02860000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <283>;
+		status = "disabled";
+	};
+
+	uart7: uart@2870000 {
+		compatible = "ns16550";
+		reg = <0x02870000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <284>;
+		status = "disabled";
+	};
+
+	uart8: uart@2880000 {
+		compatible = "ns16550";
+		reg = <0x02880000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <285>;
+		status = "disabled";
+	};
+
+	uart9: uart@2890000 {
+		compatible = "ns16550";
+		reg = <0x02890000 0x100>;
+		clock-frequency = <48000000>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
+		reg-shift = <2>;
+		ti,sci-dev-id = <286>;
 		status = "disabled";
 	};
 
