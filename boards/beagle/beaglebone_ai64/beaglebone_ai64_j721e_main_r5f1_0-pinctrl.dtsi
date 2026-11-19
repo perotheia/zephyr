@@ -24,4 +24,16 @@
 			 <K3_PINMUX(0x16c, PIN_INPUT, MUX_MODE_7)>,	/* P9_21b parked */
 			 <K3_PINMUX(0x1e4, PIN_INPUT, MUX_MODE_7)>;	/* P9_18b parked */
 	};
+
+	/* UART4 on P9_37 (RX) / P9_38 (TX): the header's second balls AG28 / AG27, mux mode 8 */
+	uart4_default: uart4_default {
+		pinmux = <K3_PINMUX(0xe8, PIN_INPUT, MUX_MODE_8)>,	/* P9_37 UART4_RXD */
+			 <K3_PINMUX(0xec, PIN_OUTPUT, MUX_MODE_8)>;	/* P9_38 UART4_TXD */
+	};
+
+	/* UART6 on P9_14 (RX) / P9_16 (TX), mux mode 3 */
+	uart6_default: uart6_default {
+		pinmux = <K3_PINMUX(0x178, PIN_INPUT, MUX_MODE_3)>,	/* P9_14 UART6_RXD */
+			 <K3_PINMUX(0x17c, PIN_OUTPUT, MUX_MODE_3)>;	/* P9_16 UART6_TXD */
+	};
 };
