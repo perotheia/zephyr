@@ -446,6 +446,23 @@
 		status = "disabled";
 	};
 
+	/*
+	 * MCU_ADC0 (MCU domain, visible to the MAIN R5F cores): the analog
+	 * inputs of the expansion headers. Its interrupt reaches a MAIN R5FSS
+	 * through that cluster's interrupt router, see the core dtsi.
+	 */
+	mcu_adc0: adc@40200000 {
+		compatible = "ti,am335x-adc";
+		reg = <0x40200000 DT_SIZE_K(1)>;
+		ti,fifo = <0>;
+		ti,vrefp = <1800>;
+		ti,sci-dev-id = <0>;
+		#io-channel-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
 	mbox1: mailbox@31f81000 {
 		compatible = "ti,omap-mailbox";
 		reg = <0x31f81000 0x200>;
