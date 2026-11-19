@@ -31,9 +31,8 @@
 /*
  * MAIN UART3..9 reach R5FSS1 only through R5FSS1_INTROUTER0 (TI-SCI device
  * 135; its outputs 0..31 are this core's VIM lines 256..287, host MAIN_1_R5_0
- * owns outputs 0..127). UART4 and UART6 (the BeagleBone AI-64 header UARTs)
- * are routed here: UART4 in 189 -> out 0 (VIM 256), UART6 in 191 -> out 1
- * (VIM 257).
+ * owns outputs 0..127). Routed here: UART4 in 189 -> out 0 (VIM 256), UART6
+ * in 191 -> out 1 (VIM 257), UART8 in 193 -> out 2 (VIM 258).
  */
 &uart4 {
 	interrupts = <0 256 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
@@ -45,4 +44,10 @@
 	interrupts = <0 257 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 	interrupt-parent = <&vim>;
 	ti,sci-ir-route = <135 191 1>;
+};
+
+&uart8 {
+	interrupts = <0 258 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+	interrupt-parent = <&vim>;
+	ti,sci-ir-route = <135 193 2>;
 };
