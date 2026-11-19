@@ -303,8 +303,9 @@ static int ti_adc_init(const struct device *dev)
 
 	regs = DEV_REGS(dev);
 
+	/* analog inputs usually need no pin configuration */
 	ret = pinctrl_apply_state(cfg->pinctrl, PINCTRL_STATE_DEFAULT);
-	if (ret < 0) {
+	if (ret < 0 && ret != -ENOENT) {
 		LOG_ERR("failed to apply pinctrl");
 		return ret;
 	}
