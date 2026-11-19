@@ -107,6 +107,7 @@ struct omap_mcspi_data {
 	uint32_t chconf;
 	uint32_t chctrl;
 	uint8_t dfs; /* data frame size - word length in bytes */
+	uint32_t wait_cyc; /* status wait timeout for the configured rate, in hw cycles */
 };
 
 static void omap_mcspi_channel_enable(const struct device *dev, bool enable)
@@ -173,6 +174,25 @@ static void omap_mcspi_set_mode(const struct device *dev, bool is_peripheral)
 	}
 
 	regs->MODULCTRL = modulctrl;
+}
+
+/* default status wait: 1 ms */
+#define OMAP_MCSPI_WAIT_DEFAULT_US (OMAP_MCSPI_REG_RETRIES * OMAP_MCSPI_REG_TIME_BETWEEN_RETRIES_US)
+
+/*
+ * Time to wait for a status bit at a given bus rate: twice the time the
+ * deepest FIFO (64 bytes) takes to shift out, at least the default. At
+ * 100 kHz half a FIFO alone takes 2.5 ms.
+ */
+static uint32_t omap_mcspi_wait_cycles(uint32_t speed_hz)
+{
+	uint64_t us = OMAP_MCSPI_WAIT_DEFAULT_US;
+
+	if (speed_hz != 0U) {
+		us = MAX(us, (2ULL * 64U * 8U * USEC_PER_SEC) / speed_hz);
+	}
+
+	return k_us_to_cyc_ceil32((uint32_t)MIN(us, 10ULL * USEC_PER_SEC));
 }
 
 static int omap_mcspi_configure_clk_freq(const struct device *dev, uint32_t speed_hz,
@@ -329,16 +349,15 @@ static int omap_mcspi_configure(const struct device *dev, const struct spi_confi
 	if (rv != 0) {
 		return rv;
 	}
+	data->wait_cyc = omap_mcspi_wait_cycles(config->frequency);
 
 	/* save config in the context */
 	ctx->config = config;
 	return 0;
 }
 
-static int omap_mcspi_wait_for_reg_bit(volatile uint32_t *reg, uint8_t bit)
+static int omap_mcspi_wait_for_reg_bit(volatile uint32_t *reg, uint8_t bit, uint32_t timeout_cyc)
 {
-	const uint32_t timeout = k_us_to_cyc_ceil32(OMAP_MCSPI_REG_RETRIES *
-						    OMAP_MCSPI_REG_TIME_BETWEEN_RETRIES_US);
 	const uint32_t start = k_cycle_get_32();
 
 	/*
@@ -347,8 +366,7 @@ static int omap_mcspi_wait_for_reg_bit(volatile uint32_t *reg, uint8_t bit)
 	 * the scheduler's granularity instead of the bus time.
 	 */
 	while ((*reg & bit) == 0) {
-		/* timeout = 1ms */
-		if ((k_cycle_get_32() - start) > timeout) {
+		if ((k_cycle_get_32() - start) > timeout_cyc) {
 			return ((*reg & bit) != 0) ? 0 : -ETIMEDOUT;
 		}
 	}
@@ -411,6 +429,8 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 	const uint8_t *tx_buf = ctx->tx_buf;
 	uint8_t *rx_buf = ctx->rx_buf;
 
+	const uint32_t wait_cyc = data->wait_cyc;
+
 	volatile uint32_t *chstat = &regs->CHAN[chan].CHSTAT;
 	volatile uint32_t *tx_reg = &regs->CHAN[chan].TX;
 	volatile uint32_t *rx_reg = &regs->CHAN[chan].RX;
@@ -421,7 +441,7 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 		*tx_reg = 0;
 
 		while (count != 0) {
-			if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_RXS)) {
+			if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_RXS, wait_cyc)) {
 				LOG_ERR("RXS timed out");
 				return count;
 			}
@@ -433,7 +453,7 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 		}
 
 		/* Make sure RX FIFO is empty */
-		if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_RXFFE) != 0) {
+		if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_RXFFE, wait_cyc) != 0) {
 			LOG_ERR("RXFFE timed out");
 			return count;
 		}
@@ -444,7 +464,7 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 			size_t num_words = MIN(count, (data->fifo_depth / 2) / dfs);
 
 			/* Make sure TX FIFO is empty */
-			if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_TXFFE)) {
+			if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_TXFFE, wait_cyc)) {
 				LOG_ERR("TXFFE timed out");
 				return count;
 			}
@@ -459,7 +479,7 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 		}
 
 		/* Make sure TX FIFO is empty */
-		if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_TXFFE)) {
+		if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_TXFFE, wait_cyc)) {
 			LOG_ERR("TXFFE timed out");
 			return count;
 		}
@@ -470,7 +490,7 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 			size_t num_words = MIN(count, (data->fifo_depth / 2) / dfs);
 
 			/* Make sure TX FIFO is empty */
-			if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_TXFFE)) {
+			if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_TXFFE, wait_cyc)) {
 				LOG_ERR("TXFFE timed out");
 				return count;
 			}
@@ -483,7 +503,7 @@ static int omap_mcspi_transceive_pio(const struct device *dev, size_t count)
 
 			/* Read and empty the entire RX FIFO */
 			for (int i = 0; i < num_words; i++) {
-				if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_RXS)) {
+				if (omap_mcspi_wait_for_reg_bit(chstat, OMAP_MCSPI_CHSTAT_RXS, wait_cyc)) {
 					LOG_ERR("RXS timed out");
 					return count;
 				}
@@ -665,7 +685,8 @@ static int omap_mcspi_init(const struct device *dev)
 	regs->SYSCONFIG |= OMAP_MCSPI_SYSCONFIG_SOFTRESET;
 
 	/* Wait till reset is done */
-	ret = omap_mcspi_wait_for_reg_bit(&regs->SYSSTATUS, OMAP_MCSPI_SYSSTATUS_RESETDONE);
+	ret = omap_mcspi_wait_for_reg_bit(&regs->SYSSTATUS, OMAP_MCSPI_SYSSTATUS_RESETDONE,
+					  omap_mcspi_wait_cycles(0));
 	if (ret < 0) {
 		LOG_ERR("RESETDONE timed out");
 		return ret;
