@@ -66,9 +66,21 @@ void z_vim_irq_init(void)
 		 CONFIG_NUM_IRQS, num_of_irqs);
 	LOG_DBG("VIM: Number of IRQs = %u\n", num_of_irqs);
 
-	/* Start with all interrupts masked */
+	/*
+	 * Start with all interrupts masked and a quiet VIM: a remote core that is
+	 * restarted with only a local reset (e.g. Linux remoteproc stop/start with
+	 * the PSC module kept on) still finds the previous run's enables, pending
+	 * status and in-service priority level.
+	 */
 	for (int i = 0; i <= VIM_MAX_GROUP_NUM; i++) {
 		sys_write32(VIM_GRP_INTR_EN_CLR_MSK_MASK, VIM_INTR_EN_CLR(i));
+		sys_write32(VIM_GRP_STS_MSK_MASK, VIM_STS(i));
+		sys_write32(VIM_GRP_STS_MSK_MASK, VIM_IRQSTS(i));
+	}
+
+	/* End any interrupt left in service, one priority level per write */
+	for (int i = 0; i <= VIM_PRI_INT_MAX; i++) {
+		sys_write32(0, VIM_IRQVEC);
 	}
 }
 
