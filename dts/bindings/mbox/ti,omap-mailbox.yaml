@@ -19,5 +19,12 @@ properties:
     required: true
     description: User ID for processor
 
+  ti,sci-ir-route:
+    type: array
+    description: |
+      <interrupt-router-device input output>: the NAVSS interrupt router hop
+      that connects this mailbox user's interrupt to the VIM line in
+      "interrupts". Programmed at boot with TI-SCI (SOC_TI_K3_TISCI_IR_ROUTE).
+
 mbox-cells:
   - channel

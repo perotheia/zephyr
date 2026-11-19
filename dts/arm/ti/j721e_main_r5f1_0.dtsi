@@ -14,6 +14,13 @@
 
 &mbox2 {
 	usr-id = <1>;
+	/*
+	 * Mailbox cluster 2 user 1 enters NAVSS0_INTR_ROUTER_0 (TI-SCI device 213)
+	 * at input 429; output 283 of host MAIN_1_R5_0's range is wired to this
+	 * core's VIM line 251 (outputs 256..287 = VIM 224..255).
+	 */
+	interrupts = <0 251 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+	ti,sci-ir-route = <213 429 283>;
 	status = "okay";
 };
 

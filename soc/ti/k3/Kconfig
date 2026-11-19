@@ -55,4 +55,52 @@ config SOC_TI_K3_R5F_IPC_WINDOW_SIZE
 	  Power of two; covers the vrings and the resource table/trace that
 	  follow the IPC shared memory (TI: 2 MB per core).
 
+config SOC_TI_K3_TISCI_POLLED
+	bool
+	depends on SOC_SERIES_J721E_R5
+	help
+	  A minimal TI-SCI client polled over the secure proxy, for the SoC
+	  services below. This core's secure proxy threads can be beyond the
+	  range of the generic secure proxy driver, and its response interrupt
+	  would itself need routing.
+
+if SOC_TI_K3_TISCI_POLLED
+
+config SOC_TI_K3_TISCI_HOST_ID
+	int "TI-SCI host id (non-secure context of this core)"
+	default 40 if SOC_J721E_MAIN_R5F1_0
+
+config SOC_TI_K3_TISCI_RX_THREAD
+	int "Secure proxy thread for TI-SCI responses"
+	default 81 if SOC_J721E_MAIN_R5F1_0
+
+config SOC_TI_K3_TISCI_TX_THREAD
+	int "Secure proxy thread for TI-SCI requests (low priority)"
+	default 83 if SOC_J721E_MAIN_R5F1_0
+
+config SOC_TI_K3_TISCI_SECPROXY_DATA
+	hex "Secure proxy target data base"
+	default 0x32c00000 if SOC_SERIES_J721E_R5
+
+config SOC_TI_K3_TISCI_SECPROXY_RT
+	hex "Secure proxy real-time (thread status) base"
+	default 0x32400000 if SOC_SERIES_J721E_R5
+
+endif # SOC_TI_K3_TISCI_POLLED
+
+DT_COMPAT_TI_OMAP_MAILBOX := ti,omap-mailbox
+DT_PROP_TI_SCI_IR_ROUTE := ti,sci-ir-route
+
+config SOC_TI_K3_TISCI_IR_ROUTE
+	bool "Route mailbox interrupts through the NAVSS interrupt router with TI-SCI"
+	default y
+	depends on SOC_J721E_MAIN_R5F1_0
+	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_TI_OMAP_MAILBOX),$(DT_PROP_TI_SCI_IR_ROUTE))
+	select SOC_TI_K3_TISCI_POLLED
+	help
+	  For each enabled ti,omap-mailbox node with a ti,sci-ir-route property
+	  (<interrupt-router-device input output>), program that router hop at
+	  boot with TI-SCI RM_IRQ_SET, as TI's PDK sciclient does. The router
+	  output is wired to the node's VIM line.
+
 endif # SOC_FAMILY_TI_K3
