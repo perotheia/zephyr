@@ -50,6 +50,23 @@
 		status = "okay";
 	};
 
+	/* MAIN CTRL_MMR0, partition 1: the eHRPWM time-base clock enables (EPWMn_CTRL) */
+	main_ctrl_mmr0: syscon@100000 {
+		compatible = "ti,control-module", "syscon";
+		reg = <0x00100000 0x8000>;
+		reg-io-width = <4>;
+		ti,unlock-offsets = <0x5008>;
+		#epwm-tbclk-cells = <2>;
+		status = "disabled";
+	};
+
+	/* eHRPWM functional clock: MAIN_SYSCLK0 / 4 */
+	ehrpwm_fck: clock-ehrpwm-fck {
+		compatible = "fixed-clock";
+		clock-frequency = <DT_FREQ_M(125)>;
+		#clock-cells = <0>;
+	};
+
 	pinctrl: pinctrl@11c000 {
 		compatible = "ti,k3-pinctrl";
 		reg = <0x0011c000 0x2b4>;
@@ -321,6 +338,111 @@
 		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
 		reg-shift = <2>;
 		ti,sci-dev-id = <286>;
+		status = "disabled";
+	};
+
+	ehrpwm0: pwm@3000000 {
+		compatible = "ti,am3352-ehrpwm";
+		reg = <0x03000000 0x100>;
+		clocks = <&ehrpwm_fck>;
+		tbclk = <&main_ctrl_mmr0 0x4140 0>;
+		#pwm-cells = <3>;
+		ti,sci-dev-id = <83>;
+		status = "disabled";
+	};
+
+	ehrpwm1: pwm@3010000 {
+		compatible = "ti,am3352-ehrpwm";
+		reg = <0x03010000 0x100>;
+		clocks = <&ehrpwm_fck>;
+		tbclk = <&main_ctrl_mmr0 0x4144 0>;
+		#pwm-cells = <3>;
+		ti,sci-dev-id = <84>;
+		status = "disabled";
+	};
+
+	ehrpwm2: pwm@3020000 {
+		compatible = "ti,am3352-ehrpwm";
+		reg = <0x03020000 0x100>;
+		clocks = <&ehrpwm_fck>;
+		tbclk = <&main_ctrl_mmr0 0x4148 0>;
+		#pwm-cells = <3>;
+		ti,sci-dev-id = <85>;
+		status = "disabled";
+	};
+
+	ehrpwm3: pwm@3030000 {
+		compatible = "ti,am3352-ehrpwm";
+		reg = <0x03030000 0x100>;
+		clocks = <&ehrpwm_fck>;
+		tbclk = <&main_ctrl_mmr0 0x414c 0>;
+		#pwm-cells = <3>;
+		ti,sci-dev-id = <86>;
+		status = "disabled";
+	};
+
+	ehrpwm4: pwm@3040000 {
+		compatible = "ti,am3352-ehrpwm";
+		reg = <0x03040000 0x100>;
+		clocks = <&ehrpwm_fck>;
+		tbclk = <&main_ctrl_mmr0 0x4150 0>;
+		#pwm-cells = <3>;
+		ti,sci-dev-id = <87>;
+		status = "disabled";
+	};
+
+	ehrpwm5: pwm@3050000 {
+		compatible = "ti,am3352-ehrpwm";
+		reg = <0x03050000 0x100>;
+		clocks = <&ehrpwm_fck>;
+		tbclk = <&main_ctrl_mmr0 0x4154 0>;
+		#pwm-cells = <3>;
+		ti,sci-dev-id = <88>;
+		status = "disabled";
+	};
+
+	/*
+	 * MAIN GPIO2 drives the same pads as GPIO0 (GPIO2_n = GPIO0_n) from its
+	 * own registers: the instance for a core that shares the pins with an
+	 * OS owning GPIO0. One node per 32-pin bank.
+	 */
+	main_gpio2_0: gpio@610010 {
+		compatible = "ti,davinci-gpio";
+		reg = <0x00610010 0x28>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <32>;
+		ti,sci-dev-id = <107>;
+		status = "disabled";
+	};
+
+	main_gpio2_1: gpio@610038 {
+		compatible = "ti,davinci-gpio";
+		reg = <0x00610038 0x28>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <32>;
+		ti,sci-dev-id = <107>;
+		status = "disabled";
+	};
+
+	main_gpio2_2: gpio@610060 {
+		compatible = "ti,davinci-gpio";
+		reg = <0x00610060 0x28>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <32>;
+		ti,sci-dev-id = <107>;
+		status = "disabled";
+	};
+
+	main_gpio2_3: gpio@610088 {
+		compatible = "ti,davinci-gpio";
+		reg = <0x00610088 0x28>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <32>;
+		ti,sci-dev-id = <107>;
 		status = "disabled";
 	};
 
