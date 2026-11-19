@@ -630,13 +630,14 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 static int i2c_omap_transfer_main(const struct device *dev, struct i2c_msg msg[], int num,
 				  bool polling, uint16_t addr)
 {
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	int ret;
 
-	ret = i2c_omap_wait_for_bb(dev);
-	struct i2c_omap_data *data = DEV_DATA(dev);
-
+	/* bus-busy check inside the lock, and every exit path gives it back */
 	k_sem_take(&data->lock, K_FOREVER);
+	ret = i2c_omap_wait_for_bb(dev);
 	if (ret < 0) {
+		k_sem_give(&data->lock);
 		return ret;
 	}
 	for (int msg_idx = 0; msg_idx < num; msg_idx++) {
