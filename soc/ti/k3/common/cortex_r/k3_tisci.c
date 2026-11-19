@@ -166,6 +166,50 @@ int k3_ir_route(uint16_t ir_dev, uint16_t ir_input, uint16_t ir_output)
 	return rc;
 }
 
+#define TISCI_MSG_SET_DEVICE       0x0200U
+#define TISCI_DEVICE_SW_STATE_ON   2U
+
+struct tisci_set_device_req {
+	struct tisci_hdr hdr;
+	uint32_t id;
+	uint32_t reserved;
+	uint8_t state;
+} __packed;
+
+/* Request a device (power + module clock) on, as TI's PDK Sciclient_pmSetModuleState(ON) does */
+int k3_tisci_device_on(uint32_t dev_id)
+{
+	struct tisci_set_device_req req = {
+		.hdr.type = TISCI_MSG_SET_DEVICE,
+		.id = dev_id,
+		.state = TISCI_DEVICE_SW_STATE_ON,
+	};
+	struct tisci_hdr resp;
+	int rc = k3_tisci_xfer(&req, sizeof(req), &resp, sizeof(resp));
+
+	if (rc == 0) {
+		LOG_INF("device %u on", dev_id);
+	} else {
+		LOG_ERR("device %u: SET_DEVICE(ON) %s %d", dev_id, rc == 1 ? "NAK" : "error", rc);
+	}
+	return rc;
+}
+
+#ifdef CONFIG_SOC_TI_K3_TISCI_DEVICES
+#define K3_DEVICE_ON(node)                                                                         \
+	COND_CODE_1(DT_NODE_HAS_PROP(node, ti_sci_dev_id),                                         \
+		    ((void)k3_tisci_device_on(DT_PROP(node, ti_sci_dev_id));), ())
+
+static int k3_tisci_devices_init(void)
+{
+	DT_FOREACH_STATUS_OKAY(ti_omap_mcspi, K3_DEVICE_ON)
+	return 0;
+}
+
+/* before the drivers of these devices */
+SYS_INIT(k3_tisci_devices_init, POST_KERNEL, 0);
+#endif /* CONFIG_SOC_TI_K3_TISCI_DEVICES */
+
 #ifdef CONFIG_SOC_TI_K3_TISCI_IR_ROUTE
 #define K3_MBOX_IR_ROUTE(node)                                                                     \
 	COND_CODE_1(DT_NODE_HAS_PROP(node, ti_sci_ir_route),                                       \

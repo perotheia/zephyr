@@ -88,6 +88,21 @@ config SOC_TI_K3_TISCI_SECPROXY_RT
 
 endif # SOC_TI_K3_TISCI_POLLED
 
+DT_COMPAT_TI_OMAP_MCSPI := ti,omap-mcspi
+DT_PROP_TI_SCI_DEV_ID := ti,sci-dev-id
+
+config SOC_TI_K3_TISCI_DEVICES
+	bool "Power on devices with a ti,sci-dev-id property through TI-SCI"
+	default y
+	depends on SOC_J721E_MAIN_R5F1_0
+	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_TI_OMAP_MCSPI),$(DT_PROP_TI_SCI_DEV_ID))
+	select SOC_TI_K3_TISCI_POLLED
+	help
+	  Before their drivers start, request the enabled devices that carry a
+	  ti,sci-dev-id property (McSPI so far) on with TI-SCI SET_DEVICE, as
+	  TI's PDK does with Sciclient_pmSetModuleState(). Peripherals that no
+	  other host has requested are powered off by the system firmware.
+
 DT_COMPAT_TI_OMAP_MAILBOX := ti,omap-mailbox
 DT_PROP_TI_SCI_IR_ROUTE := ti,sci-ir-route
 

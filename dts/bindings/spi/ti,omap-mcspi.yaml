@@ -21,3 +21,10 @@ properties:
     type: boolean
     description: |
       Sets d0 as MOSI and d1 as MISO if true, vice versa otherwise.
+
+  ti,sci-dev-id:
+    type: int
+    description: |
+      TI-SCI device id of this McSPI instance. On a K3 R5F with
+      SOC_TI_K3_TISCI_DEVICES the SoC code requests the device on with it
+      before the driver starts.
