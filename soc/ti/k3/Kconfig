@@ -26,4 +26,33 @@ config SOC_FAMILY_TI_K3_BOOT_SPRINGBOARD
 	  by default then this option enables a boot springboard in ATCM to set
 	  executable permissions before jumping to the code area in DRAM
 
+config SOC_TI_K3_R5F_EARLY_MPU
+	bool "TI's reference R5F MPU table at early boot"
+	default y
+	depends on SOC_SERIES_J721E_R5 && SOC_FAMILY_TI_K3_BOOT_SPRINGBOARD && !ARM_MPU
+	select SOC_PREP_HOOK
+	help
+	  The boot springboard leaves the MPU enabled with a single region over
+	  DRAM that is inner non-cacheable, so code, data and stacks in DRAM run
+	  uncached whatever the cache enables (about 50x slower than TI's
+	  FreeRTOS on the same core). ARM_MPU cannot simply reprogram it: its
+	  init disables the MPU while executing from DRAM, which the default
+	  memory map makes execute-never.
+
+	  This programs TI's reference table (PDK r5f_mpu_j721e_default.c) in
+	  the SoC prep hook with the MPU kept enabled, from the highest region
+	  down, so that DRAM stays executable throughout: a 4 GB strongly-ordered
+	  XN background, ATCM, OCSRAM, MSMC and all of DDR write-back
+	  write-allocate, BTCM non-cacheable, the shared vring area XN, and a
+	  non-cacheable XN window over the IPC shared memory (chosen
+	  zephyr,ipc_shm), as normal memory so unaligned copies work.
+
+config SOC_TI_K3_R5F_IPC_WINDOW_SIZE
+	hex "Size of the non-cacheable IPC window"
+	default 0x200000
+	depends on SOC_TI_K3_R5F_EARLY_MPU
+	help
+	  Power of two; covers the vrings and the resource table/trace that
+	  follow the IPC shared memory (TI: 2 MB per core).
+
 endif # SOC_FAMILY_TI_K3
