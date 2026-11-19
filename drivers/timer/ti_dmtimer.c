@@ -71,6 +71,36 @@ static void ti_dm_timer_write_masks(uint32_t data, uint32_t reg, uint32_t mask, 
 	sys_write32(reg_val, reg);
 }
 
+/*
+ * Program the match for the tick boundary `ticks` after the last announced
+ * one (data->last_cycle), counting the whole ticks already elapsed, so that
+ * every match falls on a tick boundary. A boundary too close to (or past) the
+ * counter is moved one tick later: an equality compare passed by would not
+ * fire again for a full 32-bit counter period. Lock held.
+ */
+static void ti_dm_timer_set_match(struct ti_dm_timer_data *data, uint32_t ticks)
+{
+	const uint32_t min_ahead = CYC_PER_TICK / 16U + 1U;
+	uint32_t curr_cycle = TI_DM_TIMER_READ(systick_timer_dev, TCRR);
+	uint32_t elapsed_ticks = (curr_cycle - data->last_cycle) / CYC_PER_TICK;
+	uint32_t n = MIN(elapsed_ticks + ticks, (uint32_t)MAX_TICKS);
+	uint32_t next_cycle = data->last_cycle + n * CYC_PER_TICK;
+
+	if ((uint32_t)(next_cycle - curr_cycle) < min_ahead ||
+	    (uint32_t)(next_cycle - curr_cycle) > (uint32_t)MAX_TICKS * CYC_PER_TICK) {
+		next_cycle += CYC_PER_TICK;
+	}
+	TI_DM_TIMER_WRITE(systick_timer_dev, next_cycle, TMAR, COMPARE_VALUE);
+
+	/* the counter may have passed the match while it was written */
+	curr_cycle = TI_DM_TIMER_READ(systick_timer_dev, TCRR);
+	if ((uint32_t)(next_cycle - curr_cycle) > (uint32_t)MAX_TICKS * CYC_PER_TICK) {
+		next_cycle = data->last_cycle +
+			     ((curr_cycle - data->last_cycle) / CYC_PER_TICK + 1U) * CYC_PER_TICK;
+		TI_DM_TIMER_WRITE(systick_timer_dev, next_cycle, TMAR, COMPARE_VALUE);
+	}
+}
+
 static void ti_dmtimer_isr(void *param)
 {
 	ARG_UNUSED(param);
@@ -88,16 +118,19 @@ static void ti_dmtimer_isr(void *param)
 	uint32_t delta_cycles = curr_cycle - data->last_cycle;
 	uint32_t delta_ticks = delta_cycles / CYC_PER_TICK;
 
-	data->last_cycle = curr_cycle;
+	/*
+	 * Advance by whole ticks only: the part of a tick that has already
+	 * passed (interrupt latency) stays counted, or kernel time would run
+	 * slow by the latency of every interrupt.
+	 */
+	data->last_cycle += delta_ticks * CYC_PER_TICK;
 
 	/* ACK match interrupt */
 	TI_DM_TIMER_WRITE(systick_timer_dev, 1, IRQSTATUS, MAT_IT_FLAG);
 
 	if (!IS_ENABLED(CONFIG_TICKLESS_KERNEL)) {
-		/* Setup next match time */
-		uint64_t next_cycle = curr_cycle + CYC_PER_TICK;
-
-		TI_DM_TIMER_WRITE(systick_timer_dev, next_cycle, TMAR, COMPARE_VALUE);
+		/* next tick boundary */
+		ti_dm_timer_set_match(data, 1);
 	}
 
 	k_spin_unlock(&data->lock, key);
@@ -120,11 +153,7 @@ void sys_clock_set_timeout(uint32_t ticks, bool idle)
 
 	k_spinlock_key_t key = k_spin_lock(&data->lock);
 
-	/* Setup next match time */
-	uint32_t curr_cycle = TI_DM_TIMER_READ(systick_timer_dev, TCRR);
-	uint32_t next_cycle = curr_cycle + (ticks * CYC_PER_TICK);
-
-	TI_DM_TIMER_WRITE(systick_timer_dev, next_cycle, TMAR, COMPARE_VALUE);
+	ti_dm_timer_set_match(data, ticks);
 
 	k_spin_unlock(&data->lock, key);
 }
