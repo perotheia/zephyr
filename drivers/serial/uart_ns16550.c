@@ -20,7 +20,6 @@
  */
 
 #include <errno.h>
-#include <stdlib.h>
 #include <zephyr/kernel.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/types.h>
@@ -619,20 +618,72 @@ static inline int ns16550_read_char(const struct device *dev, unsigned char *c)
  * -7 %, 921600: -19 %) while 13x hits them within 0.2 %. Pick the mode whose
  * rounded divisor gives the smaller error.
  */
+#define TI_K3_DIVISOR_MAX 0x3fffU /* DLH holds 6 bits */
+
 static uint32_t ti_k3_baudrate_divisor(uint32_t baud_rate, uint32_t pclk, uint8_t *mode)
 {
-	uint32_t div16 = MAX(1U, (uint32_t)(((uint64_t)pclk + 8ULL * baud_rate) / (16ULL * baud_rate)));
-	uint32_t div13 = MAX(1U, (uint32_t)(((uint64_t)pclk * 2ULL + 13ULL * baud_rate) /
-					 (26ULL * baud_rate)));
-	int64_t err16 = (int64_t)(pclk / (16U * div16)) - baud_rate;
-	int64_t err13 = (int64_t)(pclk / (13U * div13)) - baud_rate;
+	static const struct {
+		uint8_t oversampling;
+		uint8_t mode;
+	} modes[] = {
+		{16U, MDR1_STD_MODE},
+		{13U, MDR1_UART_13X},
+	};
+	uint64_t best_err = UINT64_MAX, best_den = 1U;
+	uint32_t best_div = 1U;
 
-	if (llabs(err13) < llabs(err16)) {
-		*mode = MDR1_UART_13X;
-		return div13;
+	*mode = MDR1_STD_MODE;
+
+	/*
+	 * The rate is pclk / (oversampling * divisor): the nearest rate is at
+	 * the floor or the ceiling of the exact divisor, not always at its
+	 * rounded value. Compare the four candidates by
+	 * |pclk - n * div * baud| / (n * div), cross-multiplied; ties keep
+	 * 16x.
+	 */
+	ARRAY_FOR_EACH(modes, i) {
+		const uint64_t n = modes[i].oversampling;
+		const uint64_t exact = pclk / (n * baud_rate);
+
+		for (uint64_t div = MAX(exact, 1ULL); div <= exact + 1U; div++) {
+			const uint64_t den = n * div;
+			const uint64_t got = den * baud_rate;
+			const uint64_t err = (pclk > got) ? pclk - got : got - pclk;
+
+			if (div > TI_K3_DIVISOR_MAX) {
+				break;
+			}
+			if (best_err == UINT64_MAX || err * best_den < best_err * den) {
+				best_err = err;
+				best_den = den;
+				best_div = (uint32_t)div;
+				*mode = modes[i].mode;
+			}
+		}
 	}
-	*mode = MDR1_STD_MODE; /* 16x */
-	return div16;
+
+	if (best_err == UINT64_MAX) {
+		/* slower than the divisor can go: the slowest rate there is */
+		best_div = TI_K3_DIVISOR_MAX;
+	}
+
+	return best_div;
+}
+
+/* let a character in flight leave before the mode or the divisor change (bounded) */
+static void ti_k3_wait_tx_idle(const struct device *dev)
+{
+	const struct uart_ns16550_dev_config *const dev_cfg = dev->config;
+	uint32_t mdr = ns16550_inbyte(dev_cfg, MDR1(dev));
+
+	if ((mdr & MDR1_MODE_SELECT_FIELD_MASK) == MDR1_DISABLE) {
+		return;
+	}
+	for (uint32_t polls = 0U; polls < 200000U; polls++) {
+		if ((ns16550_inbyte(dev_cfg, LSR(dev)) & LSR_TEMT) != 0U) {
+			break;
+		}
+	}
 }
 #endif
 
@@ -725,6 +776,8 @@ static int uart_ns16550_configure(const struct device *dev,
 #endif
 
 #ifdef CONFIG_UART_NS16550_TI_K3
+	ti_k3_wait_tx_idle(dev);
+
 	uint32_t mdr = ns16550_inbyte(dev_cfg, MDR1(dev));
 
 	mdr = ((mdr & ~MDR1_MODE_SELECT_FIELD_MASK) | ((((MDR1_STD_MODE) <<
