@@ -33,7 +33,13 @@ LOG_MODULE_REGISTER(k3_tisci, CONFIG_SOC_LOG_LEVEL);
 #define SP_DATA_END         0x3cU
 #define SP_RT_ERR           BIT(31)
 #define SP_RT_CNT_MASK      0xffU
-#define SP_TIMEOUT_US       100000U
+/*
+ * Reply timeout as a poll count, not a time: this runs before the system
+ * clock (PRE_KERNEL_1), so k_busy_wait() is not available. One poll is one
+ * device register read, some hundred ns; the system firmware answers in well
+ * under a millisecond.
+ */
+#define SP_TIMEOUT_POLLS 4000000U
 
 #define TISCI_MSG_RM_IRQ_SET          0x1000U
 #define TISCI_FLAG_AOP                BIT(1)
@@ -91,7 +97,7 @@ static int k3_sp_recv(void *msg, size_t len)
 	uint8_t *b = msg;
 	uint32_t st, w;
 
-	for (uint32_t us = 0U;; us += 10U) {
+	for (uint32_t polls = 0U;; polls++) {
 		st = sys_read32(rt);
 		if ((st & SP_RT_ERR) != 0U) {
 			return -EIO;
@@ -99,10 +105,9 @@ static int k3_sp_recv(void *msg, size_t len)
 		if ((st & SP_RT_CNT_MASK) != 0U) {
 			break;
 		}
-		if (us >= SP_TIMEOUT_US) {
+		if (polls >= SP_TIMEOUT_POLLS) {
 			return -ETIMEDOUT;
 		}
-		k_busy_wait(10U);
 	}
 	for (size_t i = 0; i < len; i += 4U, d += 4U) {
 		w = sys_read32(d);
@@ -176,8 +181,7 @@ struct tisci_set_device_req {
 	uint8_t state;
 } __packed;
 
-/* Request a device (power + module clock) on, as TI's PDK Sciclient_pmSetModuleState(ON) does */
-int k3_tisci_device_on(uint32_t dev_id)
+static int k3_tisci_set_device_on(uint32_t dev_id)
 {
 	struct tisci_set_device_req req = {
 		.hdr.type = TISCI_MSG_SET_DEVICE,
@@ -185,7 +189,14 @@ int k3_tisci_device_on(uint32_t dev_id)
 		.state = TISCI_DEVICE_SW_STATE_ON,
 	};
 	struct tisci_hdr resp;
-	int rc = k3_tisci_xfer(&req, sizeof(req), &resp, sizeof(resp));
+
+	return k3_tisci_xfer(&req, sizeof(req), &resp, sizeof(resp));
+}
+
+/* Request a device (power + module clock) on, as TI's PDK Sciclient_pmSetModuleState(ON) does */
+int k3_tisci_device_on(uint32_t dev_id)
+{
+	int rc = k3_tisci_set_device_on(dev_id);
 
 	if (rc == 0) {
 		LOG_INF("device %u on", dev_id);
@@ -196,9 +207,39 @@ int k3_tisci_device_on(uint32_t dev_id)
 }
 
 #ifdef CONFIG_SOC_TI_K3_TISCI_DEVICES
+/*
+ * Devices are powered on before every driver, the PRE_KERNEL_1 ones (UART)
+ * included, which is before the console: keep the results and report them at
+ * POST_KERNEL. A device id shared by several nodes (GPIO banks) is requested
+ * once.
+ */
+#define K3_DEVICES_MAX 24U
+
+static struct {
+	uint16_t id;
+	int8_t rc;
+} k3_devices[K3_DEVICES_MAX];
+static uint8_t k3_devices_n;
+
+static void k3_device_on_early(uint32_t dev_id)
+{
+	for (uint8_t i = 0U; i < k3_devices_n; i++) {
+		if (k3_devices[i].id == dev_id) {
+			return;
+		}
+	}
+	int rc = k3_tisci_set_device_on(dev_id);
+
+	if (k3_devices_n < K3_DEVICES_MAX) {
+		k3_devices[k3_devices_n].id = (uint16_t)dev_id;
+		k3_devices[k3_devices_n].rc = (int8_t)CLAMP(rc, INT8_MIN, INT8_MAX);
+		k3_devices_n++;
+	}
+}
+
 #define K3_DEVICE_ON(node)                                                                         \
 	COND_CODE_1(DT_NODE_HAS_PROP(node, ti_sci_dev_id),                                         \
-		    ((void)k3_tisci_device_on(DT_PROP(node, ti_sci_dev_id));), ())
+		    (k3_device_on_early(DT_PROP(node, ti_sci_dev_id));), ())
 
 static int k3_tisci_devices_init(void)
 {
@@ -206,8 +247,21 @@ static int k3_tisci_devices_init(void)
 	return 0;
 }
 
-/* before the drivers of these devices */
-SYS_INIT(k3_tisci_devices_init, POST_KERNEL, 0);
+static int k3_tisci_devices_report(void)
+{
+	for (uint8_t i = 0U; i < k3_devices_n; i++) {
+		if (k3_devices[i].rc == 0) {
+			LOG_INF("device %u on", k3_devices[i].id);
+		} else {
+			LOG_ERR("device %u: SET_DEVICE(ON) %s %d", k3_devices[i].id,
+				k3_devices[i].rc == 1 ? "NAK" : "error", k3_devices[i].rc);
+		}
+	}
+	return 0;
+}
+
+SYS_INIT(k3_tisci_devices_init, PRE_KERNEL_1, 1);
+SYS_INIT(k3_tisci_devices_report, POST_KERNEL, 0);
 #endif /* CONFIG_SOC_TI_K3_TISCI_DEVICES */
 
 #ifdef CONFIG_SOC_TI_K3_TISCI_IR_ROUTE
