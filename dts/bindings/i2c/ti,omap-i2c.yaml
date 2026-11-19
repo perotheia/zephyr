@@ -1,6 +1,6 @@
 description: TI OMAP I2C Controller
 compatible: "ti,omap-i2c"
-include: [i2c-controller.yaml, pinctrl-device.yaml]
+include: [i2c-controller.yaml, pinctrl-device.yaml, "ti,k3-sci-node.yaml"]
 properties:
   reg:
     description: Base address and size of the I2C registers.

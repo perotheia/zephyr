@@ -33,7 +33,8 @@
  * 135; its outputs 0..31 are this core's VIM lines 256..287, host MAIN_1_R5_0
  * owns outputs 0..127). Routed here: UART4 in 189 -> out 0 (VIM 256), UART6
  * in 191 -> out 1 (VIM 257), UART8 in 193 -> out 2 (VIM 258), MCU_ADC0 in
- * 116 -> out 3 (VIM 259).
+ * 116 -> out 3 (VIM 259), I2C2 in 183 -> out 4 (VIM 260), I2C4 in 185 -> out 5
+ * (VIM 261).
  */
 &uart4 {
 	interrupts = <0 256 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
@@ -57,4 +58,14 @@
 	interrupts = <0 259 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 	interrupt-parent = <&vim>;
 	ti,sci-ir-route = <135 116 3>;
+};
+
+&i2c2 {
+	interrupts = <0 260 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+	ti,sci-ir-route = <135 183 4>;
+};
+
+&i2c4 {
+	interrupts = <0 261 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+	ti,sci-ir-route = <135 185 5>;
 };

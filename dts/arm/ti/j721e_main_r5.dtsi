@@ -81,6 +81,7 @@
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <187>;
 		status = "disabled";
 	};
 
@@ -92,61 +93,67 @@
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <188>;
 		status = "disabled";
 	};
 
 	i2c2: i2c2@2020000 {
 		compatible = "ti,omap-i2c";
 		reg = <0x02020000 0x1000>;
-		interrupts = <0 183 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
 		interrupt-parent = <&vim>;
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <189>;
 		status = "disabled";
 	};
 
 	i2c3: i2c3@2030000 {
 		compatible = "ti,omap-i2c";
 		reg = <0x02030000 0x1000>;
-		interrupts = <0 184 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
 		interrupt-parent = <&vim>;
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <190>;
 		status = "disabled";
 	};
 
 	i2c4: i2c4@2040000 {
 		compatible = "ti,omap-i2c";
 		reg = <0x02040000 0x1000>;
-		interrupts = <0 185 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
 		interrupt-parent = <&vim>;
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <191>;
 		status = "disabled";
 	};
 
 	i2c5: i2c5@2050000 {
 		compatible = "ti,omap-i2c";
 		reg = <0x02050000 0x1000>;
-		interrupts = <0 186 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
 		interrupt-parent = <&vim>;
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <192>;
 		status = "disabled";
 	};
 
 	i2c6: i2c@2060000 {
 		compatible = "ti,omap-i2c";
 		reg = <0x02060000 0x1000>;
-		interrupts = <0 187 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		/* interrupt: through this cluster's R5FSS interrupt router, see the core dtsi */
 		interrupt-parent = <&vim>;
 		clock-frequency = <100000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		ti,sci-dev-id = <193>;
 		status = "disabled";
 	};
 
