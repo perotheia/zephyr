@@ -76,6 +76,9 @@ void z_vim_irq_init(void)
 		sys_write32(VIM_GRP_INTR_EN_CLR_MSK_MASK, VIM_INTR_EN_CLR(i));
 		sys_write32(VIM_GRP_STS_MSK_MASK, VIM_STS(i));
 		sys_write32(VIM_GRP_STS_MSK_MASK, VIM_IRQSTS(i));
+		/* and every line back on IRQ: a previous image may have mapped some to FIQ */
+		sys_write32(0, VIM_INTMAP(i));
+		sys_write32(VIM_GRP_STS_MSK_MASK, VIM_FIQSTS(i));
 	}
 
 	/* End any interrupt left in service, one priority level per write */
