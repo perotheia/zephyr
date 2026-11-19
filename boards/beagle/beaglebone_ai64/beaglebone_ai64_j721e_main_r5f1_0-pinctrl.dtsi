@@ -9,6 +9,12 @@
 /* pad off: no receiver, no pull, output driver disabled (PADCONFIG TX_DIS) */
 #define AI64_PAD_HIZ (INPUT_DISABLE | PULL_DISABLE | (1 << 21))
 
+/*
+ * PADCONFIG VGPIO_SEL (bits 5:4): the MAIN GPIO instance a pad in mode 7 is
+ * connected to. 0 = GPIO0 (Linux), assumed 1 = GPIO2 (this core).
+ */
+#define AI64_VGPIO_GPIO2 (1 << 4)
+
 &pinctrl {
 	/*
 	 * MCSPI6 on the P9 header, two chip selects (as BeagleBoard's
@@ -91,11 +97,16 @@
 	 *   ESTOP_SENSE P8_12 (59): input, external pull-up, low = bus live
 	 */
 	motor_gpio_default: motor_gpio_default {
-		pinmux = <K3_PINMUX(0x03c, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_07 EN_L */
-			 <K3_PINMUX(0x038, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_08 EN_R */
-			 <K3_PINMUX(0x044, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_09 BRAKE_L */
-			 <K3_PINMUX(0x040, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_10 BRAKE_R */
-			 <K3_PINMUX(0x130, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_14 DRV_ARM */
-			 <K3_PINMUX(0x0f0, PIN_INPUT, MUX_MODE_7)>;		/* P8_12 ESTOP_SENSE */
+		pinmux = <K3_PINMUX(0x03c, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>,	/* P8_07 EN_L */
+			 <K3_PINMUX(0x038, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>,	/* P8_08 EN_R */
+			 <K3_PINMUX(0x044, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>,	/* P8_09 BRAKE_L */
+			 <K3_PINMUX(0x040, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>,	/* P8_10 BRAKE_R */
+			 <K3_PINMUX(0x130, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>,	/* P8_14 DRV_ARM */
+			 <K3_PINMUX(0x0f0, PIN_INPUT | AI64_VGPIO_GPIO2, MUX_MODE_7)>;		/* P8_12 ESTOP */
+	};
+
+	/* P8_16 (GPIO 62): spare input on GPIO2 (IMU DRDY later; a PWM probe on the bench) */
+	gpio_probe_default: gpio_probe_default {
+		pinmux = <K3_PINMUX(0x0fc, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>;	/* P8_16 */
 	};
 };
