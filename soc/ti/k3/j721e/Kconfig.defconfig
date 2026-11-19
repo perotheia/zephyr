@@ -29,6 +29,10 @@ endchoice
 
 endif # SERIAL
 
+# the eHRPWM functional clock is a devicetree fixed-clock on the R5F cores
+configdefault CLOCK_CONTROL_FIXED_RATE_CLOCK
+	default y if SOC_SERIES_J721E_R5 && PWM_TI_AM3352_EHRPWM
+
 config BUILD_OUTPUT_BIN
 	default n if SOC_SERIES_J721E_R5
 
