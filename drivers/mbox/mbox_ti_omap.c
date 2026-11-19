@@ -180,6 +180,16 @@ static int omap_mailbox_set_enabled(const struct device *dev, uint32_t channel, 
 	irqstatus = regs->irq_regs[cfg->usr_id].enable_set;
 
 	if (enable) {
+		/*
+		 * Drop messages left in the fifo from before this core (re)started
+		 * (a remote core restarted with only a local reset finds the previous
+		 * run's kicks still queued) and their pending status, so that enabling
+		 * the level interrupt does not fire for a stale message.
+		 */
+		for (int i = 0; i < OMAP_MAILBOX_NUM_MSGS && regs->msg_status[channel]; i++) {
+			(void)regs->message[channel];
+		}
+		regs->irq_regs[cfg->usr_id].status_clear = MAILBOX_IRQ_NEWMSG(channel);
 		irqstatus |= MAILBOX_IRQ_NEWMSG(channel);
 	} else {
 		irqstatus &= ~MAILBOX_IRQ_NEWMSG(channel);
@@ -197,6 +207,21 @@ static int omap_mailbox_set_enabled(const struct device *dev, uint32_t channel, 
 	k_spin_unlock(&data->lock, key);
 
 	return 0;
+}
+
+/*
+ * Mask and acknowledge every interrupt of this user: the mailbox keeps its
+ * state across a restart of this core (it lives outside the core), so the
+ * previous run's enables would otherwise raise the line before any channel
+ * is enabled again.
+ */
+static void omap_mailbox_quiesce(const struct device *dev)
+{
+	const struct omap_mailbox_config *cfg = DEV_CFG(dev);
+	volatile struct omap_mailbox_regs *regs = DEV_REG_BASE(dev);
+
+	regs->irq_regs[cfg->usr_id].enable_clear = UINT32_MAX;
+	regs->irq_regs[cfg->usr_id].status_clear = UINT32_MAX;
 }
 
 static DEVICE_API(mbox, omap_mailbox_driver_api) = {
@@ -217,6 +242,7 @@ static DEVICE_API(mbox, omap_mailbox_driver_api) = {
 	static int omap_mailbox_##idx##_init(const struct device *dev)				\
 	{											\
 		DEVICE_MMIO_NAMED_MAP(dev, reg_base, K_MEM_CACHE_NONE);				\
+		omap_mailbox_quiesce(dev);							\
 		IRQ_CONNECT(DT_INST_IRQN(idx), DT_INST_IRQ(idx, priority), omap_mailbox_isr,	\
 			    DEVICE_DT_INST_GET(idx),						\
 			    COND_CODE_1(DT_INST_IRQ_HAS_CELL(idx, flags),			\
