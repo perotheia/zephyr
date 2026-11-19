@@ -141,7 +141,6 @@ struct ti_ehrpwm_data {
 #define TI_EHRPWM_TBCTL_SYNCOSEL           GENMASK(5, 4)
 #define TI_EHRPWM_TBCTL_SYNCOSEL_DISABLED  (3)
 
-#define TI_EHRPWM_AQSFRC_RLDCSF_ZERO      (0)
 #define TI_EHRPWM_AQSFRC_RLDCSF_IMMEDIATE (3)
 
 static uint16_t ti_ehrpwm_csf_mask(uint32_t channel)
@@ -172,9 +171,12 @@ static void ti_ehrpwm_force_low(const struct device *dev, uint32_t channel)
 }
 
 /*
- * Release the force at the next counter zero, where the shadowed period and
- * compare values written before it take effect too: the first period after
- * an enable is already the requested one.
+ * Release the force at once, after the new values are written. Glitch-free:
+ * the output stays at its forced-low level until the next action-qualifier
+ * event, the zero match that sets it, and that same zero loads the shadowed
+ * period and compare values: the first period is already the requested
+ * one. (A release at counter zero would not take effect while the time base
+ * does not count.)
  */
 static void ti_ehrpwm_release(const struct device *dev, uint32_t channel)
 {
@@ -182,7 +184,7 @@ static void ti_ehrpwm_release(const struct device *dev, uint32_t channel)
 	struct ti_ehrpwm_regs *regs = DEV_REGS(dev);
 
 	data->aqcsfrc &= ~ti_ehrpwm_csf_mask(channel);
-	regs->AQSFRC = FIELD_PREP(TI_EHRPWM_AQSFRC_RLDCSF, TI_EHRPWM_AQSFRC_RLDCSF_ZERO);
+	regs->AQSFRC = FIELD_PREP(TI_EHRPWM_AQSFRC_RLDCSF, TI_EHRPWM_AQSFRC_RLDCSF_IMMEDIATE);
 	regs->AQCSFRC = data->aqcsfrc;
 }
 
