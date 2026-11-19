@@ -404,7 +404,14 @@ static int ti_ehrpwm_set_cycles(const struct device *dev, uint32_t channel, uint
 		pulse_cycles /= 2;
 	}
 
-	/* write period cycles */
+	/*
+	 * write period cycles: an up-counter counts 0..TBPRD (TBPRD + 1 clocks
+	 * per period), an up-down counter 2 * TBPRD. With TBPRD = period - 1 a
+	 * pulse equal to the period never matches the counter, a true 100 %.
+	 */
+	if (!data->symmetric && period_cycles > 0) {
+		period_cycles--;
+	}
 	regs->TBPRD = period_cycles;
 
 	/* write duty cycles */
