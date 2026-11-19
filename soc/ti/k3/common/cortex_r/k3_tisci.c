@@ -5,7 +5,7 @@
  *
  * A minimal TI-SCI client for a K3 R5F, polled over the secure proxy, and what this SoC code uses it for.
  *
- * Route mailbox interrupts through the NAVSS interrupt router with TI-SCI, the way TI's PDK sciclient does it
+ * Route device interrupts (mailbox, UART, ...) through an interrupt router with TI-SCI, the way TI's PDK sciclient does it
  * (Sciclient_rmIrqProgramRoute, one IR hop): RM_IRQ_SET with src = dst = the interrupt router, src_index = the
  * router input, dst_host_irq = the router output, secondary host = this host. The router output is hard-wired to
  * a VIM line of this core (the mailbox node's interrupt).
@@ -202,7 +202,7 @@ int k3_tisci_device_on(uint32_t dev_id)
 
 static int k3_tisci_devices_init(void)
 {
-	DT_FOREACH_STATUS_OKAY(ti_omap_mcspi, K3_DEVICE_ON)
+	DT_FOREACH_STATUS_OKAY_NODE(K3_DEVICE_ON)
 	return 0;
 }
 
@@ -211,7 +211,7 @@ SYS_INIT(k3_tisci_devices_init, POST_KERNEL, 0);
 #endif /* CONFIG_SOC_TI_K3_TISCI_DEVICES */
 
 #ifdef CONFIG_SOC_TI_K3_TISCI_IR_ROUTE
-#define K3_MBOX_IR_ROUTE(node)                                                                     \
+#define K3_IR_ROUTE(node)                                                                     \
 	COND_CODE_1(DT_NODE_HAS_PROP(node, ti_sci_ir_route),                                       \
 		    ((void)k3_ir_route(DT_PROP_BY_IDX(node, ti_sci_ir_route, 0),                   \
 				       DT_PROP_BY_IDX(node, ti_sci_ir_route, 1),                   \
@@ -220,7 +220,7 @@ SYS_INIT(k3_tisci_devices_init, POST_KERNEL, 0);
 
 static int k3_ir_routes_init(void)
 {
-	DT_FOREACH_STATUS_OKAY(ti_omap_mailbox, K3_MBOX_IR_ROUTE)
+	DT_FOREACH_STATUS_OKAY_NODE(K3_IR_ROUTE)
 	return 0;
 }
 

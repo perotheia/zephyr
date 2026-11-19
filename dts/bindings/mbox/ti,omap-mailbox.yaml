@@ -5,7 +5,7 @@ description: TI OMAP MAILBOX
 
 compatible: "ti,omap-mailbox"
 
-include: [base.yaml, mailbox-controller.yaml]
+include: [base.yaml, mailbox-controller.yaml, "ti,k3-sci-node.yaml"]
 
 properties:
   reg:
@@ -18,13 +18,6 @@ properties:
     type: int
     required: true
     description: User ID for processor
-
-  ti,sci-ir-route:
-    type: array
-    description: |
-      <interrupt-router-device input output>: the NAVSS interrupt router hop
-      that connects this mailbox user's interrupt to the VIM line in
-      "interrupts". Programmed at boot with TI-SCI (SOC_TI_K3_TISCI_IR_ROUTE).
 
 mbox-cells:
   - channel

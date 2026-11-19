@@ -1,0 +1,21 @@
+# Copyright (c) 2026 The Perotheia authors
+# SPDX-License-Identifier: Apache-2.0
+
+# TI-SCI services for K3 peripherals that a K3 R5F core sets up itself at boot
+# (SOC_TI_K3_TISCI_DEVICES, SOC_TI_K3_TISCI_IR_ROUTE). Included by the bindings
+# of the devices that use them.
+
+properties:
+  ti,sci-dev-id:
+    type: int
+    description: |
+      TI-SCI device id. The SoC code requests the device on (SET_DEVICE)
+      before the drivers start: the system firmware keeps a peripheral off
+      until some host requests it.
+
+  ti,sci-ir-route:
+    type: array
+    description: |
+      <interrupt-router-device input output>: the interrupt router hop that
+      connects this device's interrupt to the VIM line in "interrupts",
+      programmed at boot with TI-SCI RM_IRQ_SET.
