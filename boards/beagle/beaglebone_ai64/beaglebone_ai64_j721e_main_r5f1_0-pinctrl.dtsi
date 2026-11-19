@@ -30,10 +30,10 @@
 			 <K3_PINMUX(0x28, PIN_OUTPUT, MUX_MODE_4)>,	/* P9_23  SPI6_CS1 */
 			 <K3_PINMUX(0xa0, PIN_OUTPUT, MUX_MODE_4)>,	/* P9_21a SPI6_D0 (MOSI) */
 			 <K3_PINMUX(0xa4, PIN_INPUT, MUX_MODE_4)>,	/* P9_18a SPI6_D1 (MISO) */
-			 <K3_PINMUX(0x170, PIN_INPUT, MUX_MODE_7)>,	/* P9_22b parked */
-			 <K3_PINMUX(0x1d0, PIN_INPUT, MUX_MODE_7)>,	/* P9_17b parked */
-			 <K3_PINMUX(0x16c, PIN_INPUT, MUX_MODE_7)>,	/* P9_21b parked */
-			 <K3_PINMUX(0x1e4, PIN_INPUT, MUX_MODE_7)>;	/* P9_18b parked */
+			 <K3_PINMUX(0x170, AI64_PAD_HIZ, MUX_MODE_7)>,	/* P9_22b parked */
+			 <K3_PINMUX(0x1d0, AI64_PAD_HIZ, MUX_MODE_7)>,	/* P9_17b parked */
+			 <K3_PINMUX(0x16c, AI64_PAD_HIZ, MUX_MODE_7)>,	/* P9_21b parked */
+			 <K3_PINMUX(0x1e4, AI64_PAD_HIZ, MUX_MODE_7)>;	/* P9_18b parked */
 	};
 
 	/* UART8 on P8_28 (RX) / P8_29 (TX), mux mode 14 */
@@ -120,5 +120,16 @@
 			 <K3_PINMUX(0x20c, PIN_INPUT, MUX_MODE_4)>,	/* P9_20 I2C2_SDA */
 			 <K3_PINMUX(0x13c, AI64_PAD_HIZ, MUX_MODE_7)>,	/* P9_19 AF29 off */
 			 <K3_PINMUX(0x138, AI64_PAD_HIZ, MUX_MODE_7)>;	/* P9_20 AE25 off */
+	};
+
+	/* SPI6_CS3 on P8_21 (AF21, mode 4): the right camera IMU (CS1 on P9_23 is the left one) */
+	mcspi6_cs3_default: mcspi6_cs3_default {
+		pinmux = <K3_PINMUX(0x07c, PIN_OUTPUT, MUX_MODE_4)>;	/* P8_21 SPI6_CS3 */
+	};
+
+	/* camera IMU INT1 / DRDY on GPIO2 (pads of GPIO0_1 / GPIO0_2), inputs, no pulls */
+	cam_imu_int_default: cam_imu_int_default {
+		pinmux = <K3_PINMUX(0x004, PIN_INPUT | AI64_VGPIO_GPIO2, MUX_MODE_7)>,	/* P9_11 left INT1 */
+			 <K3_PINMUX(0x008, PIN_INPUT | AI64_VGPIO_GPIO2, MUX_MODE_7)>;	/* P9_13 right INT1 */
 	};
 };
