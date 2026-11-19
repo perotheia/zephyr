@@ -120,7 +120,7 @@ struct ti_ehrpwm_data {
 	uint32_t period_cycles[TI_EHRPWM_NUM_CHANNELS];
 	uint32_t prescale_div[TI_EHRPWM_NUM_CHANNELS];
 	bool symmetric;
-	bool enabled;
+	bool enabled[TI_EHRPWM_NUM_CHANNELS];
 #ifdef CONFIG_PWM_EVENT
 	uint16_t event;
 	sys_slist_t event_callbacks;
@@ -249,7 +249,7 @@ static int ti_ehrpwm_enable(const struct device *dev, uint32_t channel)
 	int err;
 
 	/* already enabled */
-	if (data->enabled == true) {
+	if (data->enabled[channel]) {
 		return 0;
 	}
 
@@ -265,7 +265,7 @@ static int ti_ehrpwm_enable(const struct device *dev, uint32_t channel)
 	regs->AQSFRC &= ~TI_EHRPWM_AQSFRC_RLDCSF;
 	regs->AQCSFRC = aqcsfrc;
 
-	/* enable TBCLK */
+	/* enable TBCLK (shared by both channels) */
 	err = syscon_read_reg(cfg->tbclk_syscon, cfg->tbclk_offset, &tbclk_reg);
 	if (err != 0) {
 		LOG_ERR("failed to read timebase clock register");
@@ -277,7 +277,7 @@ static int ti_ehrpwm_enable(const struct device *dev, uint32_t channel)
 		LOG_ERR("failed to write timebase clock register");
 		return err;
 	}
-	data->enabled = true;
+	data->enabled[channel] = true;
 
 	return 0;
 }
@@ -292,7 +292,7 @@ static int ti_ehrpwm_disable(const struct device *dev, uint32_t channel)
 	int err;
 
 	/* already disabled */
-	if (data->enabled == false) {
+	if (!data->enabled[channel]) {
 		return 0;
 	}
 
@@ -314,7 +314,20 @@ static int ti_ehrpwm_disable(const struct device *dev, uint32_t channel)
 	regs->AQSFRC |= TI_EHRPWM_AQSFRC_RLDCSF;
 	regs->AQCSFRC = aqcsfrc;
 
-	/* disable TBCLK */
+	data->period_cycles[channel] = 0;
+	data->enabled[channel] = false;
+
+	/*
+	 * The time-base clock is shared: stop it only when the other channel is
+	 * disabled too. Stopping it under a running channel would freeze that
+	 * output at its current level.
+	 */
+	for (uint32_t i = 0; i < TI_EHRPWM_NUM_CHANNELS; i++) {
+		if (data->enabled[i]) {
+			return 0;
+		}
+	}
+
 	err = syscon_read_reg(cfg->tbclk_syscon, cfg->tbclk_offset, &tbclk_reg);
 	if (err != 0) {
 		LOG_ERR("failed to read timebase clock register");
@@ -326,9 +339,6 @@ static int ti_ehrpwm_disable(const struct device *dev, uint32_t channel)
 		LOG_ERR("failed to write timebase clock register");
 		return err;
 	}
-
-	data->period_cycles[channel] = 0;
-	data->enabled = false;
 
 	return 0;
 }
