@@ -20,6 +20,7 @@
  */
 
 #include <errno.h>
+#include <stdlib.h>
 #include <zephyr/kernel.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/types.h>
@@ -512,7 +513,7 @@ static inline uintptr_t get_port(const struct device *dev)
 	return port;
 }
 
-static uint32_t get_uart_baudrate_divisor(const struct device *dev,
+static __maybe_unused uint32_t get_uart_baudrate_divisor(const struct device *dev,
 					  uint32_t baud_rate,
 					  uint32_t pclk)
 {
@@ -611,6 +612,30 @@ static inline int ns16550_read_char(const struct device *dev, unsigned char *c)
 	return -1;
 }
 
+#ifdef CONFIG_UART_NS16550_TI_K3
+/*
+ * TI K3 UARTs oversample 16x or 13x (MDR1 mode). With the usual 48 MHz
+ * functional clock, 16x alone leaves several common rates far off (460800:
+ * -7 %, 921600: -19 %) while 13x hits them within 0.2 %. Pick the mode whose
+ * rounded divisor gives the smaller error.
+ */
+static uint32_t ti_k3_baudrate_divisor(uint32_t baud_rate, uint32_t pclk, uint8_t *mode)
+{
+	uint32_t div16 = MAX(1U, (uint32_t)(((uint64_t)pclk + 8ULL * baud_rate) / (16ULL * baud_rate)));
+	uint32_t div13 = MAX(1U, (uint32_t)(((uint64_t)pclk * 2ULL + 13ULL * baud_rate) /
+					 (26ULL * baud_rate)));
+	int64_t err16 = (int64_t)(pclk / (16U * div16)) - baud_rate;
+	int64_t err13 = (int64_t)(pclk / (13U * div13)) - baud_rate;
+
+	if (llabs(err13) < llabs(err16)) {
+		*mode = MDR1_UART_13X;
+		return div13;
+	}
+	*mode = MDR1_STD_MODE; /* 16x */
+	return div16;
+}
+#endif
+
 static void set_baud_rate(const struct device *dev, uint32_t baud_rate, uint32_t pclk)
 {
 	struct uart_ns16550_dev_data * const dev_data = dev->data;
@@ -621,6 +646,15 @@ static void set_baud_rate(const struct device *dev, uint32_t baud_rate, uint32_t
 	if ((baud_rate != 0U) && (pclk != 0U)) {
 #ifdef CONFIG_UART_NS16550_ITE_HIGH_SPEED_BAUDRATE
 		divisor = get_ite_uart_baudrate_divisor(dev, baud_rate, pclk);
+#elif defined(CONFIG_UART_NS16550_TI_K3)
+		uint8_t mdr1_mode;
+		uint32_t mdr;
+
+		divisor = ti_k3_baudrate_divisor(baud_rate, pclk, &mdr1_mode);
+		/* the oversampling mode is changed with the UART disabled */
+		mdr = ns16550_inbyte(dev_cfg, MDR1(dev));
+		ns16550_outbyte(dev_cfg, MDR1(dev),
+				(mdr & ~MDR1_MODE_SELECT_FIELD_MASK) | MDR1_DISABLE);
 #else
 		divisor = get_uart_baudrate_divisor(dev, baud_rate, pclk);
 #endif
@@ -645,6 +679,11 @@ static void set_baud_rate(const struct device *dev, uint32_t baud_rate, uint32_t
 #endif
 		/* restore the DLAB to access the baud rate divisor registers */
 		ns16550_outbyte(dev_cfg, LCR(dev), lcr_cache);
+
+#ifdef CONFIG_UART_NS16550_TI_K3
+		ns16550_outbyte(dev_cfg, MDR1(dev),
+				(mdr & ~MDR1_MODE_SELECT_FIELD_MASK) | mdr1_mode);
+#endif
 
 		dev_data->uart_config.baudrate = baud_rate;
 	}
