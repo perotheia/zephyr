@@ -3,7 +3,7 @@
 
 description: TI SOC EHRPWM based PWM controller
 
-include: [pwm-controller.yaml, base.yaml, pinctrl-device.yaml]
+include: [pwm-controller.yaml, base.yaml, pinctrl-device.yaml, "ti,k3-sci-node.yaml"]
 
 compatible: "ti,am3352-ehrpwm"
 
