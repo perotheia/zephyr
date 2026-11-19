@@ -30,6 +30,7 @@ struct omap_mailbox_data {
 	mbox_callback_t cb[MAILBOX_MAX_CHANNELS];
 	void *user_data[MAILBOX_MAX_CHANNELS];
 	bool channel_enable[MAILBOX_MAX_CHANNELS];
+	bool channel_drained[MAILBOX_MAX_CHANNELS];
 	uint32_t received_data;
 	struct k_spinlock lock;
 };
@@ -181,15 +182,21 @@ static int omap_mailbox_set_enabled(const struct device *dev, uint32_t channel, 
 
 	if (enable) {
 		/*
-		 * Drop messages left in the fifo from before this core (re)started
-		 * (a remote core restarted with only a local reset finds the previous
-		 * run's kicks still queued) and their pending status, so that enabling
-		 * the level interrupt does not fire for a stale message.
+		 * First enable after boot only: drop messages left in the fifo from
+		 * before this core (re)started (a remote core restarted with only a
+		 * local reset finds the previous run's kicks still queued) and their
+		 * pending status, so that enabling the level interrupt does not fire
+		 * for a stale message. Later disable/enable cycles keep what arrived
+		 * in between.
 		 */
-		for (int i = 0; i < OMAP_MAILBOX_NUM_MSGS && regs->msg_status[channel]; i++) {
-			(void)regs->message[channel];
+		if (!data->channel_drained[channel]) {
+			for (int i = 0; i < OMAP_MAILBOX_NUM_MSGS && regs->msg_status[channel];
+			     i++) {
+				(void)regs->message[channel];
+			}
+			regs->irq_regs[cfg->usr_id].status_clear = MAILBOX_IRQ_NEWMSG(channel);
+			data->channel_drained[channel] = true;
 		}
-		regs->irq_regs[cfg->usr_id].status_clear = MAILBOX_IRQ_NEWMSG(channel);
 		irqstatus |= MAILBOX_IRQ_NEWMSG(channel);
 	} else {
 		irqstatus &= ~MAILBOX_IRQ_NEWMSG(channel);
