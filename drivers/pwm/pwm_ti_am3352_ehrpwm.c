@@ -634,7 +634,8 @@ static DEVICE_API(pwm, ti_ehrpwm_api) = {
 	), (COND_CODE_1(CONFIG_CLOCK_CONTROL_ARM_SCMI,                                             \
 		(static const clock_control_subsys_t ti_ehrpwm_clk_subsys_##n =                    \
 			(clock_control_subsys_t)DT_INST_PHA(n, clocks, name);                      \
-	), (BUILD_ASSERT(0, "Unsupported clock controller");))))
+	), (/* any other controller with a single rate, e.g. a fixed-clock */               \
+		static const clock_control_subsys_t ti_ehrpwm_clk_subsys_##n = NULL;))))
 
 #ifdef CONFIG_PWM_EVENT
 #define TI_EHRPWM_IRQ_INIT(n)                                                                      \
