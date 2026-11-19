@@ -1,0 +1,27 @@
+/*
+ * Copyright (c) 2026 The Perotheia authors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pinctrl/ti-k3-pinctrl.h>
+
+&pinctrl {
+	/*
+	 * MCSPI6 on the P9 header, two chip selects (as BeagleBoard's
+	 * k3-j721e-beagleboneai64-spi-mcspi6-cs0-cs1 overlay). Each of these
+	 * header pins is also wired to a second SoC pad: those are parked as
+	 * GPIO inputs (high impedance) so that they do not fight the bus.
+	 */
+	mcspi6_default: mcspi6_default {
+		pinmux = <K3_PINMUX(0x9c, PIN_OUTPUT, MUX_MODE_4)>,	/* P9_22a SPI6_CLK */
+			 <K3_PINMUX(0x74, PIN_OUTPUT, MUX_MODE_4)>,	/* P9_17a SPI6_CS0 */
+			 <K3_PINMUX(0x28, PIN_OUTPUT, MUX_MODE_4)>,	/* P9_23  SPI6_CS1 */
+			 <K3_PINMUX(0xa0, PIN_OUTPUT, MUX_MODE_4)>,	/* P9_21a SPI6_D0 (MOSI) */
+			 <K3_PINMUX(0xa4, PIN_INPUT, MUX_MODE_4)>,	/* P9_18a SPI6_D1 (MISO) */
+			 <K3_PINMUX(0x170, PIN_INPUT, MUX_MODE_7)>,	/* P9_22b parked */
+			 <K3_PINMUX(0x1d0, PIN_INPUT, MUX_MODE_7)>,	/* P9_17b parked */
+			 <K3_PINMUX(0x16c, PIN_INPUT, MUX_MODE_7)>,	/* P9_21b parked */
+			 <K3_PINMUX(0x1e4, PIN_INPUT, MUX_MODE_7)>;	/* P9_18b parked */
+	};
+};

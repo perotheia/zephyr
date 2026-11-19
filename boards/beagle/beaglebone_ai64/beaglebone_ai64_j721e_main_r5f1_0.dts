@@ -6,6 +6,7 @@
 /dts-v1/;
 
 #include <ti/j721e_main_r5f1_0.dtsi>
+#include "beaglebone_ai64_j721e_main_r5f1_0-pinctrl.dtsi"
 #include <freq.h>
 
 / {
