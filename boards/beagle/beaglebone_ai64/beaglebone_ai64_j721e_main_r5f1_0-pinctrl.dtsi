@@ -68,28 +68,34 @@
 			 <K3_PINMUX(0x168, PIN_INPUT, MUX_MODE_6)>;	/* P8_13 EHRPWM0_B */
 	};
 
+	/* P8_37 has two balls: EHRPWM5_A on Y27, AD21 off */
 	ehrpwm5_default: ehrpwm5_default {
-		pinmux = <K3_PINMUX(0x1ac, PIN_INPUT, MUX_MODE_6)>;	/* P8_37 EHRPWM5_A */
+		pinmux = <K3_PINMUX(0x1ac, PIN_INPUT, MUX_MODE_6)>,	/* P8_37 EHRPWM5_A (Y27) */
+			 <K3_PINMUX(0x02c, AI64_PAD_HIZ, MUX_MODE_7)>;	/* P8_37 AD21 off */
 	};
 
-	/* P9_25 has two balls: EHRPWM4_B on W26, AC4 parked as a GPIO input */
+	/* P9_25 has two balls: EHRPWM4_B on W26, AC4 off */
 	ehrpwm4_default: ehrpwm4_default {
 		pinmux = <K3_PINMUX(0x1a4, PIN_INPUT, MUX_MODE_6)>,	/* P9_25 EHRPWM4_B (W26) */
-			 <K3_PINMUX(0x200, PIN_INPUT, MUX_MODE_7)>;	/* P9_25 AC4 parked */
+			 <K3_PINMUX(0x200, AI64_PAD_HIZ, MUX_MODE_7)>;	/* P9_25 AC4 off */
 	};
 
 	/*
-	 * Motor bridge control on GPIO2 (pads of GPIO0_n), mux mode 7, pulled
-	 * down so the bridges stay disabled and the brakes engaged while the
-	 * pins are inputs (reset, core stopped):
-	 * enables P8_14 (GPIO 75) / P8_16 (62), brake releases P8_17 (3) /
-	 * P8_18 (4), e-stop sense input P8_15 (61).
+	 * Motor bridge control on GPIO2 (pads of GPIO0_n), mux mode 7. The
+	 * outputs are pulled down (the board adds 10k pull-downs): bridges
+	 * disabled, brakes applied and the output stage disarmed while the
+	 * pins are inputs (reset, core stopped).
+	 *   EN_L P8_07 (15), EN_R P8_08 (14): bridge enables
+	 *   BRAKE_L P8_09 (17), BRAKE_R P8_10 (16): high = brake released
+	 *   DRV_ARM P8_14 (75): high = level-shifter outputs enabled
+	 *   ESTOP_SENSE P8_12 (59): input, external pull-up, low = bus live
 	 */
 	motor_gpio_default: motor_gpio_default {
-		pinmux = <K3_PINMUX(0x130, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_14 */
-			 <K3_PINMUX(0x0fc, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_16 */
-			 <K3_PINMUX(0x00c, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_17 */
-			 <K3_PINMUX(0x010, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_18 */
-			 <K3_PINMUX(0x0f8, PIN_INPUT_PULLDOWN, MUX_MODE_7)>;	/* P8_15 */
+		pinmux = <K3_PINMUX(0x03c, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_07 EN_L */
+			 <K3_PINMUX(0x038, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_08 EN_R */
+			 <K3_PINMUX(0x044, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_09 BRAKE_L */
+			 <K3_PINMUX(0x040, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_10 BRAKE_R */
+			 <K3_PINMUX(0x130, PIN_INPUT_PULLDOWN, MUX_MODE_7)>,	/* P8_14 DRV_ARM */
+			 <K3_PINMUX(0x0f0, PIN_INPUT, MUX_MODE_7)>;		/* P8_12 ESTOP_SENSE */
 	};
 };
