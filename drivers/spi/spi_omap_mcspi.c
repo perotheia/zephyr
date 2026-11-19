@@ -337,14 +337,20 @@ static int omap_mcspi_configure(const struct device *dev, const struct spi_confi
 
 static int omap_mcspi_wait_for_reg_bit(volatile uint32_t *reg, uint8_t bit)
 {
-	uint32_t retries = 0;
+	const uint32_t timeout = k_us_to_cyc_ceil32(OMAP_MCSPI_REG_RETRIES *
+						    OMAP_MCSPI_REG_TIME_BETWEEN_RETRIES_US);
+	const uint32_t start = k_cycle_get_32();
 
+	/*
+	 * Spin: a word takes well under a microsecond at the usual SPI rates,
+	 * so sleeping between polls (at least one tick) made every word cost
+	 * the scheduler's granularity instead of the bus time.
+	 */
 	while ((*reg & bit) == 0) {
 		/* timeout = 1ms */
-		if (retries++ > OMAP_MCSPI_REG_RETRIES) {
-			return -ETIMEDOUT;
+		if ((k_cycle_get_32() - start) > timeout) {
+			return ((*reg & bit) != 0) ? 0 : -ETIMEDOUT;
 		}
-		k_usleep(OMAP_MCSPI_REG_TIME_BETWEEN_RETRIES_US);
 	}
 
 	return 0;
