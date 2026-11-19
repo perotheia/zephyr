@@ -109,4 +109,16 @@
 	gpio_probe_default: gpio_probe_default {
 		pinmux = <K3_PINMUX(0x0fc, PIN_INPUT_PULLDOWN | AI64_VGPIO_GPIO2, MUX_MODE_7)>;	/* P8_16 */
 	};
+
+	/*
+	 * IMU / compass I2C on MAIN I2C2: P9_19 SCL (W5) / P9_20 SDA (W6), mode 4,
+	 * receivers on, no internal pulls (the breakouts have them, 3.3 V);
+	 * the header's second balls AF29 (0x13c) / AE25 (0x138) off.
+	 */
+	i2c2_default: i2c2_default {
+		pinmux = <K3_PINMUX(0x208, PIN_INPUT, MUX_MODE_4)>,	/* P9_19 I2C2_SCL */
+			 <K3_PINMUX(0x20c, PIN_INPUT, MUX_MODE_4)>,	/* P9_20 I2C2_SDA */
+			 <K3_PINMUX(0x13c, AI64_PAD_HIZ, MUX_MODE_7)>,	/* P9_19 AF29 off */
+			 <K3_PINMUX(0x138, AI64_PAD_HIZ, MUX_MODE_7)>;	/* P9_20 AE25 off */
+	};
 };
