@@ -133,6 +133,94 @@
 		status = "disabled";
 	};
 
+	main_spi0: spi@2100000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02100000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <266>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi1: spi@2110000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02110000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <267>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi2: spi@2120000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02120000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <268>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi3: spi@2130000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02130000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <269>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi4: spi@2140000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02140000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <270>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi5: spi@2150000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02150000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <271>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi6: spi@2160000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02160000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <272>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_spi7: spi@2170000 {
+		compatible = "ti,omap-mcspi";
+		reg = <0x02170000 0x400>;
+		clock-frequency = <DT_FREQ_M(50)>;
+		ti,spi-num-cs = <4>;
+		ti,sci-dev-id = <273>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
 	uart1: uart@2810000 {
 		compatible = "ns16550";
 		reg = <0x02810000 0x100>;
