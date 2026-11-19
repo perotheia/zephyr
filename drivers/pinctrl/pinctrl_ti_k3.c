@@ -20,11 +20,12 @@ struct pinctrl_ti_k3_cfg {
 int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintptr_t reg)
 {
 	ARG_UNUSED(reg);
-	const struct device *dev = pins->dev;
-	uintptr_t virt_reg_base = DEVICE_MMIO_GET(dev);
 
-	for (uint8_t i = 0; i < pin_cnt; i++) {
-		sys_write32(pins[i].value, virt_reg_base + pins[i].offset);
+	/* <offset value> cell pairs, see pinctrl_soc.h */
+	for (uint8_t i = 0; i + 1U < pin_cnt; i += 2U) {
+		uintptr_t virt_reg_base = DEVICE_MMIO_GET(pins[i].dev);
+
+		sys_write32(pins[i + 1U].cell, virt_reg_base + pins[i].cell);
 	}
 
 	return 0;
